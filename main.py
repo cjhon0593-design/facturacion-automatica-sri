@@ -86,21 +86,40 @@ with sync_playwright() as p:
     page.wait_for_timeout(2000)
 
     # FIRMAR Y ENVIAR
-    btn_firmar = page.get_by_text("Firmar y enviar")
-    btn_firmar.scroll_into_view_if_needed()
-    page.wait_for_timeout(2000)
-    btn_firmar.click(force=True)
+    page.get_by_text("Firmar y enviar").click(force=True)
+    page.wait_for_timeout(7000)
 
-    # ESPERAR VENTANA DE FIRMA DIGITAL
-    page.wait_for_timeout(5000)
+    # ESCRIBIR CLAVE DEL CERTIFICADO EN LA VENTANA
+    page.evaluate(
+        """(clave) => {
+            const inputs = Array.from(document.querySelectorAll('input'))
+                .filter(el => {
+                    const r = el.getBoundingClientRect();
+                    return r.width > 0 && r.height > 0 && !el.disabled && !el.readOnly;
+                });
 
-    # CLAVE DEL CERTIFICADO
-    password_inputs = page.locator("input[type='password']:visible")
-    password_inputs.last.fill(CERT_PASS)
+            const inputClave = inputs[inputs.length - 1];
+            inputClave.focus();
+            inputClave.value = clave;
+            inputClave.dispatchEvent(new Event('input', { bubbles: true }));
+            inputClave.dispatchEvent(new Event('change', { bubbles: true }));
+        }""",
+        CERT_PASS
+    )
+
     page.wait_for_timeout(1000)
 
-    # BOTÓN ENVIAR DE LA VENTANA
-    page.get_by_role("button", name="Enviar").click(force=True)
+    # CLIC EN ENVIAR DE LA VENTANA
+    page.evaluate(
+        """() => {
+            const botones = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"]'));
+            const enviar = botones.find(b => 
+                (b.innerText && b.innerText.trim().toUpperCase() === 'ENVIAR') ||
+                (b.value && b.value.trim().toUpperCase() === 'ENVIAR')
+            );
+            if (enviar) enviar.click();
+        }"""
+    )
 
     page.wait_for_timeout(30000)
 
