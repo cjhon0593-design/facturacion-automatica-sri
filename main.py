@@ -13,6 +13,7 @@ cliente = {
 }
 
 mes_actual = datetime.now().strftime("%B %Y").upper()
+total = round(cliente["subtotal"] * 1.15, 2)
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
@@ -31,33 +32,55 @@ with sync_playwright() as p:
 
     inputs = page.locator("input:visible")
 
+    # Tipo identificación: RUC
     inputs.nth(6).click(force=True)
     page.keyboard.press("ArrowDown")
     page.keyboard.press("ArrowDown")
     page.keyboard.press("Enter")
+    page.wait_for_timeout(1000)
 
+    # RUC cliente
     inputs.nth(5).fill(cliente["ruc"])
     page.keyboard.press("Tab")
     page.wait_for_timeout(3000)
 
+    # Producto
     inputs.nth(11).fill("A")
     page.wait_for_timeout(5000)
     page.keyboard.press("ArrowDown")
     page.keyboard.press("Enter")
     page.wait_for_timeout(2000)
 
+    # Precio
     page.keyboard.press("Tab")
     page.keyboard.press("Tab")
     page.keyboard.type(str(cliente["subtotal"]))
     page.wait_for_timeout(2000)
 
+    # Añadir forma de pago
     page.get_by_text("Añadir forma de pago").click(force=True)
     page.wait_for_timeout(3000)
 
-    print("=== TEXTO DESPUÉS DE AÑADIR FORMA DE PAGO ===")
-    print(page.locator("body").inner_text())
+    inputs = page.locator("input:visible")
 
-    print("=== INPUTS VISIBLES DESPUÉS DE FORMA DE PAGO ===")
+    # Seleccionar forma de pago
+    inputs.nth(13).click(force=True)
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("Enter")
+    page.wait_for_timeout(1000)
+
+    # Valor forma de pago
+    inputs.nth(14).fill(str(total))
+    page.wait_for_timeout(2000)
+
+    # Añadir campo adicional
+    page.get_by_text("Añadir campo adicional").click(force=True)
+    page.wait_for_timeout(3000)
+
+    print("=== INPUTS VISIBLES DESPUÉS DE CAMPO ADICIONAL ===")
     inputs = page.locator("input:visible")
     for i in range(inputs.count()):
         item = inputs.nth(i)
@@ -70,6 +93,6 @@ with sync_playwright() as p:
             "value=", item.input_value() if item.get_attribute("type") != "file" else ""
         )
 
-    print("PROCESO LLEGÓ HASTA FORMA DE PAGO")
+    print("FACTURA LLEGÓ HASTA CAMPO ADICIONAL")
 
     browser.close()
