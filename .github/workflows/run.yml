@@ -1,0 +1,31 @@
+name: Facturacion Automatica
+
+on:
+  schedule:
+    - cron: '0 13 1 * *'  # 08:00 Ecuador (UTC-5)
+  workflow_dispatch:
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Instalar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar dependencias
+        run: |
+          pip install playwright
+          playwright install
+
+      - name: Ejecutar script
+        env:
+          SRI_RUC: ${{ secrets.SRI_RUC }}
+          SRI_CLAVE: ${{ secrets.SRI_CLAVE }}
+          CERT_PASS: ${{ secrets.CERT_PASS }}
+        run: python main.py
