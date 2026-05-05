@@ -52,9 +52,11 @@ with sync_playwright() as p:
     page.wait_for_timeout(2000)
 
     # =========================
-    # PRECIO
+    # PRECIO (SOLUCIÓN SEGURA)
     # =========================
-    page.locator("input:visible").last.fill(str(cliente["subtotal"]))
+    page.keyboard.press("Tab")
+    page.keyboard.press("Tab")
+    page.keyboard.type(str(cliente["subtotal"]))
     page.wait_for_timeout(2000)
 
     # =========================
@@ -66,7 +68,7 @@ with sync_playwright() as p:
     page.get_by_text("Seleccione").last.click()
     page.get_by_text("OTROS CON UTILIZACION DEL SISTEMA FINANCIERO").click()
 
-    page.locator("input:visible").last.fill(str(cliente["subtotal"] * 1.15))
+    page.keyboard.type(str(cliente["subtotal"] * 1.15))
     page.wait_for_timeout(2000)
 
     # =========================
