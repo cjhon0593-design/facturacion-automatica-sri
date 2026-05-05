@@ -10,18 +10,28 @@ with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     page = browser.new_page()
 
+    # 1. Login
     page.goto(URL, wait_until="networkidle", timeout=60000)
 
     page.locator('input[type="text"]').first.fill(RUC)
     page.locator('input[type="password"]').fill(CLAVE)
-
     page.get_by_role("button", name="Ingresar").click()
 
-    page.wait_for_timeout(10000)
+    page.wait_for_timeout(5000)
 
-    print("URL después del login:", page.url)
-    print("Título después del login:", page.title())
-    print("Texto visible en pantalla:")
-    print(page.locator("body").inner_text())
+    # 2. Ir a "Emisión"
+    page.get_by_text("Emisión").click()
+
+    page.wait_for_timeout(3000)
+
+    # 3. Ir a "Factura"
+    page.get_by_text("Factura").click()
+
+    page.wait_for_timeout(8000)
+
+    print("URL actual:", page.url)
+    print("Título actual:", page.title())
+
+    page.screenshot(path="pantalla_factura.png", full_page=True)
 
     browser.close()
