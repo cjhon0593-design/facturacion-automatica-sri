@@ -12,19 +12,16 @@ with sync_playwright() as p:
 
     page.goto(URL, wait_until="networkidle", timeout=60000)
 
-    page.wait_for_selector('input[type="text"]', timeout=60000)
     page.locator('input[type="text"]').first.fill(RUC)
-
-    page.wait_for_selector('input[type="password"]', timeout=60000)
     page.locator('input[type="password"]').fill(CLAVE)
 
     page.get_by_role("button", name="Ingresar").click()
 
-    page.wait_for_timeout(8000)
+    page.wait_for_timeout(10000)
 
     print("URL después del login:", page.url)
     print("Título después del login:", page.title())
-
-    page.screenshot(path="despues_login.png", full_page=True)
+    print("Texto visible en pantalla:")
+    print(page.locator("body").inner_text())
 
     browser.close()
