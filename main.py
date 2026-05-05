@@ -4,7 +4,6 @@ from datetime import datetime
 
 SRI_RUC = os.getenv("SRI_RUC")
 SRI_CLAVE = os.getenv("SRI_CLAVE")
-CERT_PASS = os.getenv("CERT_PASS")
 
 URL = "https://facturadorsri.sri.gob.ec/portal-facturadorsri-internet/pages/inicio.html"
 
@@ -12,16 +11,6 @@ cliente = {
     "ruc": "1723041156001",
     "subtotal": 230
 }
-
-MESES = {
-    1: "ENERO", 2: "FEBRERO", 3: "MARZO", 4: "ABRIL",
-    5: "MAYO", 6: "JUNIO", 7: "JULIO", 8: "AGOSTO",
-    9: "SEPTIEMBRE", 10: "OCTUBRE", 11: "NOVIEMBRE", 12: "DICIEMBRE"
-}
-
-hoy = datetime.now()
-mes_actual = f"{MESES[hoy.month]} {hoy.year}"
-total = round(cliente["subtotal"] * 1.15, 2)
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
@@ -49,81 +38,20 @@ with sync_playwright() as p:
 
     inputs.nth(5).fill(cliente["ruc"])
     page.keyboard.press("Tab")
-    page.wait_for_timeout(3000)
+    page.wait_for_timeout(4000)
 
     inputs.nth(11).fill("A")
     page.wait_for_timeout(5000)
     page.keyboard.press("ArrowDown")
     page.keyboard.press("Enter")
-    page.wait_for_timeout(2000)
+    page.wait_for_timeout(4000)
 
     page.keyboard.press("Tab")
     page.keyboard.press("Tab")
     page.keyboard.type(str(cliente["subtotal"]))
-    page.wait_for_timeout(2000)
+    page.wait_for_timeout(4000)
 
-    page.get_by_text("Añadir forma de pago").click(force=True)
-    page.wait_for_timeout(3000)
-
-    inputs = page.locator("input:visible")
-    inputs.nth(13).click(force=True)
-    page.keyboard.press("ArrowDown")
-    page.keyboard.press("ArrowDown")
-    page.keyboard.press("ArrowDown")
-    page.keyboard.press("ArrowDown")
-    page.keyboard.press("Enter")
-    page.wait_for_timeout(1000)
-
-    inputs.nth(14).fill(str(total))
-    page.wait_for_timeout(2000)
-
-    page.get_by_text("Añadir campo adicional").click(force=True)
-    page.wait_for_timeout(3000)
-
-    inputs = page.locator("input:visible")
-    inputs.nth(15).fill("DETALLE")
-    inputs.nth(16).fill(f"SERVICIOS MES DE {mes_actual}")
-    page.wait_for_timeout(2000)
-
-    # FIRMAR Y ENVIAR
-    page.get_by_text("Firmar y enviar").click(force=True)
-    page.wait_for_timeout(7000)
-
-    # ESCRIBIR CLAVE DEL CERTIFICADO EN LA VENTANA
-    page.evaluate(
-        """(clave) => {
-            const inputs = Array.from(document.querySelectorAll('input'))
-                .filter(el => {
-                    const r = el.getBoundingClientRect();
-                    return r.width > 0 && r.height > 0 && !el.disabled && !el.readOnly;
-                });
-
-            const inputClave = inputs[inputs.length - 1];
-            inputClave.focus();
-            inputClave.value = clave;
-            inputClave.dispatchEvent(new Event('input', { bubbles: true }));
-            inputClave.dispatchEvent(new Event('change', { bubbles: true }));
-        }""",
-        CERT_PASS
-    )
-
-    page.wait_for_timeout(1000)
-
-    # CLIC EN ENVIAR DE LA VENTANA
-    page.evaluate(
-        """() => {
-            const botones = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"]'));
-            const enviar = botones.find(b => 
-                (b.innerText && b.innerText.trim().toUpperCase() === 'ENVIAR') ||
-                (b.value && b.value.trim().toUpperCase() === 'ENVIAR')
-            );
-            if (enviar) enviar.click();
-        }"""
-    )
-
-    page.wait_for_timeout(30000)
-
-    print("RESULTADO FINAL:")
+    print("VALIDACIÓN ANTES DE FORMA DE PAGO:")
     print(page.locator("body").inner_text())
 
     browser.close()
