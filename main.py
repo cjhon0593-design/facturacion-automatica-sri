@@ -19,14 +19,13 @@ with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     page = browser.new_page()
 
-    # LOGIN
     page.goto(URL, wait_until="networkidle", timeout=60000)
+
     page.locator('input[type="text"]').first.fill(RUC)
     page.locator('input[type="password"]').fill(CLAVE)
     page.get_by_role("button", name="Ingresar").click()
     page.wait_for_timeout(5000)
 
-    # IR A FACTURA
     page.get_by_role("button", name="Emisión").click()
     page.wait_for_timeout(2000)
     page.get_by_role("link", name="Factura", exact=True).click()
@@ -40,7 +39,7 @@ with sync_playwright() as p:
     page.keyboard.press("ArrowDown")
     page.keyboard.press("Enter")
 
-    # RUC cliente
+    # Cliente
     inputs.nth(5).fill(cliente["ruc"])
     page.keyboard.press("Tab")
     page.wait_for_timeout(3000)
@@ -50,12 +49,14 @@ with sync_playwright() as p:
     page.wait_for_timeout(5000)
     page.keyboard.press("ArrowDown")
     page.keyboard.press("Enter")
+
     page.wait_for_timeout(2000)
 
     # Precio
     page.keyboard.press("Tab")
     page.keyboard.press("Tab")
     page.keyboard.type(str(cliente["subtotal"]))
+
     page.wait_for_timeout(2000)
 
     # Forma de pago
@@ -72,11 +73,10 @@ with sync_playwright() as p:
     page.keyboard.press("Enter")
 
     inputs.nth(14).fill(str(total))
+
     page.wait_for_timeout(2000)
 
-    # =========================
-    # CAMPO ADICIONAL
-    # =========================
+    # Campo adicional
     page.get_by_text("Añadir campo adicional").click(force=True)
     page.wait_for_timeout(3000)
 
@@ -88,12 +88,20 @@ with sync_playwright() as p:
     page.wait_for_timeout(2000)
 
     # =========================
-    # FIRMAR Y ENVIAR
+    # FIRMA REAL (CORREGIDO)
     # =========================
     page.get_by_text("Firmar y enviar").click(force=True)
 
+    page.wait_for_timeout(5000)
+
+    # Intentar aceptar popup
+    try:
+        page.get_by_text("Aceptar").click(timeout=5000)
+    except:
+        pass
+
     page.wait_for_timeout(8000)
 
-    print("FACTURA GENERADA Y ENVIADA CORRECTAMENTE")
+    print("REVISA SI APARECE EN SRI")
 
     browser.close()
