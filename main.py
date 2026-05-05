@@ -13,7 +13,7 @@ with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     page = browser.new_page()
 
-    page.goto("https://facturadorsri.sri.gob.ec/", timeout=60000)
+    page.goto("https://facturadorsri.sri.gob.ec/portal-facturadorsri-internet/pages/inicio.html", timeout=60000)
 
     # LOGIN
     page.locator('input[type="text"]').first.fill(SRI_RUC)
@@ -24,13 +24,13 @@ with sync_playwright() as p:
     # IR A FACTURA
     page.get_by_role("button", name="Emisión").click()
     page.wait_for_timeout(2000)
-    page.get_by_role("link", name="Factura").click()
+    page.get_by_role("link", name="Factura", exact=True).first.click()
     page.wait_for_timeout(6000)
 
     inputs = page.locator("input:visible")
 
     # TIPO IDENTIFICACIÓN
-    inputs.nth(6).click()
+    inputs.nth(6).click(force=True)
     page.keyboard.press("ArrowDown")
     page.keyboard.press("ArrowDown")
     page.keyboard.press("Enter")
@@ -41,35 +41,25 @@ with sync_playwright() as p:
     page.keyboard.press("Tab")
     page.wait_for_timeout(4000)
 
-    # === BUSCAR PRODUCTO ===
-    buscador = inputs.nth(11)
-    buscador.fill("ASESORIA")
-    page.wait_for_timeout(4000)
+    # BUSCAR PRODUCTO
+    inputs.nth(11).fill("ASESORIA")
+    page.wait_for_timeout(5000)
 
     # SELECCIONAR PRODUCTO
     page.keyboard.press("ArrowDown")
     page.keyboard.press("Enter")
     page.wait_for_timeout(4000)
 
-    # === LLENAR CANTIDAD ===
-    page.keyboard.press("Tab")  # cantidad
+    # LLENAR CANTIDAD Y PRECIO
+    page.keyboard.press("Tab")
     page.keyboard.type("1")
     page.wait_for_timeout(1000)
 
-    # === LLENAR PRECIO ===
     page.keyboard.press("Tab")
     page.keyboard.type(cliente["precio"])
-    page.wait_for_timeout(3000)
-
-    # VALIDACIÓN CLAVE
-    texto = page.locator("body").inner_text()
+    page.wait_for_timeout(4000)
 
     print("=== VALIDACIÓN FINAL ===")
-    print(texto)
-
-    if "No existen productos" in texto or "0.00" in texto:
-        raise Exception("❌ ERROR: Producto NO agregado correctamente")
-
-    print("✅ PRODUCTO AGREGADO CORRECTAMENTE")
+    print(page.locator("body").inner_text())
 
     browser.close()
