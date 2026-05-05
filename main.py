@@ -1,5 +1,6 @@
 from playwright.sync_api import sync_playwright
 import os
+from datetime import datetime
 
 RUC = os.getenv("SRI_RUC")
 CLAVE = os.getenv("SRI_CLAVE")
@@ -10,6 +11,8 @@ cliente = {
     "ruc": "1723041156001",
     "subtotal": 230
 }
+
+mes_actual = datetime.now().strftime("%B %Y").upper()
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
@@ -30,30 +33,55 @@ with sync_playwright() as p:
 
     inputs = page.locator("input:visible")
 
-    # Tipo identificación → RUC (por teclado)
+    # Tipo identificación → RUC
     inputs.nth(6).click(force=True)
     page.keyboard.press("ArrowDown")
     page.keyboard.press("ArrowDown")
     page.keyboard.press("Enter")
-    page.wait_for_timeout(1000)
 
     # RUC cliente
     inputs.nth(5).fill(cliente["ruc"])
     page.keyboard.press("Tab")
     page.wait_for_timeout(3000)
 
-    # BUSCAR PRODUCTO (SOLUCIÓN ESTABLE)
+    # Buscar producto
     inputs.nth(11).fill("A")
     page.wait_for_timeout(5000)
-
-    print("Texto después de buscar producto:")
-    print(page.locator("body").inner_text())
-
-    # Seleccionar primer resultado con teclado
     page.keyboard.press("ArrowDown")
     page.keyboard.press("Enter")
     page.wait_for_timeout(2000)
 
-    print("FACTURA LLENADA HASTA PRODUCTO")
+    # =========================
+    # PRECIO
+    # =========================
+    page.locator("input:visible").last.fill(str(cliente["subtotal"]))
+    page.wait_for_timeout(2000)
+
+    # =========================
+    # FORMA DE PAGO
+    # =========================
+    page.get_by_text("Añadir forma de pago").click()
+    page.wait_for_timeout(2000)
+
+    page.get_by_text("Seleccione").last.click()
+    page.get_by_text("OTROS CON UTILIZACION DEL SISTEMA FINANCIERO").click()
+
+    page.locator("input:visible").last.fill(str(cliente["subtotal"] * 1.15))
+    page.wait_for_timeout(2000)
+
+    # =========================
+    # CAMPO ADICIONAL
+    # =========================
+    page.get_by_text("Añadir campo adicional").click()
+    page.wait_for_timeout(2000)
+
+    inputs = page.locator("input:visible")
+
+    inputs.nth(-2).fill("DETALLE")
+    inputs.nth(-1).fill(f"SERVICIOS MES DE {mes_actual}")
+
+    page.wait_for_timeout(2000)
+
+    print("FACTURA LISTA PARA FIRMAR")
 
     browser.close()
