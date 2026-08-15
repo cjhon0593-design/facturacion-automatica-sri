@@ -29,6 +29,7 @@ jobs:
           SRI_RUC: ${{ secrets.SRI_RUC }}
           SRI_CLAVE: ${{ secrets.SRI_CLAVE }}
           CERT_PASS: ${{ secrets.CERT_PASS }}
+          MODO_ENVIO: PRUEBA
         run: python main.py
 
       - name: Guardar capturas de diagnóstico
