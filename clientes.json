@@ -12,7 +12,10 @@
     "subtotal": 230.0,
     "iva": 34.5,
     "total": 264.5,
-    "forma_pago_valor": 264.5
+    "forma_pago": "OTROS CON UTILIZACION DEL SISTEMA FINANCIERO",
+    "forma_pago_valor": 264.5,
+    "campo_adicional_nombre": "DETALLE",
+    "campo_adicional_plantilla": "SERVICIOS MES DE {MES} {ANIO}"
   },
   "fcomex": {
     "activo": true,
@@ -27,6 +30,9 @@
     "subtotal": 200.0,
     "iva": 30.0,
     "total": 230.0,
-    "forma_pago_valor": 230.0
+    "forma_pago": "OTROS CON UTILIZACION DEL SISTEMA FINANCIERO",
+    "forma_pago_valor": 230.0,
+    "campo_adicional_nombre": "DETALLE",
+    "campo_adicional_plantilla": "SERVICIOS MES DE {MES} {ANIO}"
   }
 }
