@@ -1,488 +1,273 @@
 from playwright.sync_api import sync_playwright
 import os
-from datetime import datetime
-
-
-# ============================================================
-# CONFIGURACIÓN
-# ============================================================
+from pathlib import Path
 
 SRI_RUC = os.getenv("SRI_RUC")
 SRI_CLAVE = os.getenv("SRI_CLAVE")
 CERT_PASS = os.getenv("CERT_PASS")
 
 URL_LOGIN = "https://facturadorsri.sri.gob.ec/portal-facturadorsri-internet/pages/inicio.html"
+URL_FACTURA = "https://facturadorsri.sri.gob.ec/portal-facturadorsri-internet/pages/comprobantes/factura/Factura.html"
 
-URL_FACTURA = (
-    "https://facturadorsri.sri.gob.ec/"
-    "portal-facturadorsri-internet/pages/comprobantes/factura/Factura.html"
-)
+CLIENTE_RUC = "1723041156001"
+PRODUCTO_BUSQUEDA = "ASESORIA"
+PRODUCTO_ESPERADO = "ASESORIA CONTABILIDAD"
 
-CLIENTE = {
-    "ruc": "1723041156001",
-    "nombre": "PARDO AGURTO GLORIA ALEXANDRA",
-    "subtotal": 230.00,
-    "total": 264.50,
-}
-
-MESES = {
-    1: "ENERO",
-    2: "FEBRERO",
-    3: "MARZO",
-    4: "ABRIL",
-    5: "MAYO",
-    6: "JUNIO",
-    7: "JULIO",
-    8: "AGOSTO",
-    9: "SEPTIEMBRE",
-    10: "OCTUBRE",
-    11: "NOVIEMBRE",
-    12: "DICIEMBRE",
-}
+DEBUG_DIR = Path("debug")
+DEBUG_DIR.mkdir(exist_ok=True)
 
 
-def esperar(page, ms=1500):
-    page.wait_for_timeout(ms)
+def log(titulo):
+    print("\n" + "=" * 70)
+    print(titulo)
+    print("=" * 70)
 
 
-def seleccionar_option_por_texto(page, selector, texto_buscado):
+def screenshot(page, nombre):
+    try:
+        page.screenshot(path=str(DEBUG_DIR / nombre), full_page=True)
+    except Exception as e:
+        print(f"No se pudo guardar captura {nombre}: {e}")
+
+
+def seleccionar_option_por_texto(page, selector, texto):
     select = page.locator(selector)
-
-    select.wait_for(
-        state="attached",
-        timeout=30000
-    )
-
+    select.wait_for(state="attached", timeout=30000)
     opciones = select.locator("option")
 
     for i in range(opciones.count()):
         opcion = opciones.nth(i)
-
-        texto = opcion.inner_text().strip()
+        etiqueta = opcion.inner_text().strip()
         valor = opcion.get_attribute("value")
-
-        if texto_buscado.upper() in texto.upper():
+        if texto.upper() in etiqueta.upper():
             select.select_option(value=valor)
             select.dispatch_event("change")
-            esperar(page, 1500)
+            page.wait_for_timeout(2000)
+            print(f"Seleccionado: {etiqueta} | valor={valor}")
+            return etiqueta
 
-            print(
-                f"Seleccionado: {texto} | valor={valor}"
-            )
+    disponibles = [opciones.nth(i).inner_text().strip() for i in range(opciones.count())]
+    raise RuntimeError(f"No se encontró '{texto}'. Opciones: {disponibles}")
 
-            return True
-
-    return False
-
-
-# ============================================================
-# VALIDAR VARIABLES
-# ============================================================
 
 if not SRI_RUC:
-    raise Exception("Falta el Secret SRI_RUC")
-
+    raise RuntimeError("Falta el secret SRI_RUC")
 if not SRI_CLAVE:
-    raise Exception("Falta el Secret SRI_CLAVE")
+    raise RuntimeError("Falta el secret SRI_CLAVE")
 
-if not CERT_PASS:
-    raise Exception("Falta el Secret CERT_PASS")
-
-
-hoy = datetime.now()
-
-mes_facturado = (
-    f"{MESES[hoy.month]} {hoy.year}"
-)
-
-detalle_factura = (
-    f"SERVICIOS MES DE {mes_facturado}"
-)
-
-
-# ============================================================
-# EJECUCIÓN
-# ============================================================
 
 with sync_playwright() as p:
-
-    browser = p.chromium.launch(
-        headless=True
-    )
-
-    page = browser.new_page(
-        viewport={
-            "width": 1920,
-            "height": 1080
-        }
-    )
-
+    browser = p.chromium.launch(headless=True)
+    page = browser.new_page(viewport={"width": 1920, "height": 1080})
     page.set_default_timeout(30000)
 
-    # ========================================================
-    # 1. LOGIN
-    # ========================================================
+    try:
+        # ====================================================
+        # 1. LOGIN ROBUSTO
+        # ====================================================
+        log("1. INICIANDO SESIÓN EN EL SRI")
 
-    print("")
-    print("========================================")
-    print("1. INICIANDO SESIÓN EN EL SRI")
-    print("========================================")
+        page.goto(URL_LOGIN, wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(2500)
 
-    page.goto(
-        URL_LOGIN,
-        wait_until="networkidle",
-        timeout=60000
-    )
+        # El portal ha cambiado atributos del login entre ejecuciones.
+        # Usamos los campos visibles, que es la estrategia que ya funcionó.
+        usuario = page.locator('input[type="text"]:visible').first
+        clave = page.locator('input[type="password"]:visible').first
 
-    campo_usuario = page.locator(
-        "#loginForm\\:nombrusuario"
-    )
+        usuario.wait_for(state="visible", timeout=30000)
+        clave.wait_for(state="visible", timeout=30000)
 
-    campo_usuario.wait_for(
-        state="visible",
-        timeout=30000
-    )
+        usuario.fill(SRI_RUC)
+        clave.fill(SRI_CLAVE)
+        page.get_by_role("button", name="Ingresar", exact=True).click()
 
-    campo_usuario.fill(
-        SRI_RUC
-    )
+        # Esperar hasta que desaparezca realmente el formulario de acceso.
+        page.wait_for_timeout(5000)
+        cuerpo = page.locator("body").inner_text()
 
-    campo_clave = page.locator(
-        "#loginForm\\:passwordInput"
-    )
-
-    campo_clave.wait_for(
-        state="visible",
-        timeout=30000
-    )
-
-    campo_clave.fill(
-        SRI_CLAVE
-    )
-
-    page.get_by_role(
-        "button",
-        name="Ingresar",
-        exact=True
-    ).click()
-
-    esperar(page, 6000)
-
-    print("LOGIN COMPLETADO")
-    print("URL:", page.url)
-
-    cuerpo_login = page.locator(
-        "body"
-    ).inner_text()
-
-    if "Ingresar al Sistema" in cuerpo_login:
-        raise Exception(
-            "El SRI no aceptó el inicio de sesión."
-        )
-
-    # ========================================================
-    # 2. ABRIR FACTURA
-    # ========================================================
-
-    print("")
-    print("========================================")
-    print("2. ABRIENDO PANTALLA DE FACTURA")
-    print("========================================")
-
-    page.goto(
-        URL_FACTURA,
-        wait_until="networkidle",
-        timeout=60000
-    )
-
-    esperar(page, 5000)
-
-    cuerpo = page.locator(
-        "body"
-    ).inner_text()
-
-    if "Emisión - Factura" not in cuerpo:
-        raise Exception(
-            "No se pudo abrir la pantalla de factura."
-        )
-
-    print("PANTALLA DE FACTURA CORRECTA")
-
-    # ========================================================
-    # 3. ESTABLECIMIENTO
-    # ========================================================
-
-    print("")
-    print("========================================")
-    print("3. ESTABLECIMIENTO")
-    print("========================================")
-
-    establecimiento_selector = (
-        "#form\\:cabeceraComprobanteDlg\\:"
-        "j_idt61_input"
-    )
-
-    ok = seleccionar_option_por_texto(
-        page,
-        establecimiento_selector,
-        "001 - AV ELOY ALFARO"
-    )
-
-    if not ok:
-        raise Exception(
-            "No se encontró el establecimiento 001."
-        )
-
-    esperar(page, 2500)
-
-    # ========================================================
-    # 4. FECHA
-    # ========================================================
-
-    print("")
-    print("========================================")
-    print("4. FECHA DE EMISIÓN")
-    print("========================================")
-
-    fecha = page.locator(
-        "#form\\:identifiacionDelComprobante\\:"
-        "calFechaEmi_input"
-    )
-
-    print(
-        "Fecha SRI:",
-        fecha.input_value()
-    )
-
-    # ========================================================
-    # 5. PUNTO DE EMISIÓN
-    # ========================================================
-
-    print("")
-    print("========================================")
-    print("5. PUNTO DE EMISIÓN")
-    print("========================================")
-
-    punto_selector = (
-        "#form\\:identifiacionDelComprobante\\:"
-        "selectsecuencial_input"
-    )
-
-    ok = seleccionar_option_por_texto(
-        page,
-        punto_selector,
-        "100"
-    )
-
-    if not ok:
-        raise Exception(
-            "No se encontró el punto de emisión 100."
-        )
-
-    esperar(page, 2000)
-
-    # ========================================================
-    # 6. TIPO IDENTIFICACIÓN
-    # ========================================================
-
-    print("")
-    print("========================================")
-    print("6. TIPO IDENTIFICACIÓN")
-    print("========================================")
-
-    tipo_selector = (
-        "#form\\:busquedaCompradorComp\\:"
-        "cmbTipoIdentificacion_input"
-    )
-
-    ok = seleccionar_option_por_texto(
-        page,
-        tipo_selector,
-        "RUC"
-    )
-
-    if not ok:
-        raise Exception(
-            "No se pudo seleccionar RUC."
-        )
-
-    # ========================================================
-    # 7. CLIENTE
-    # ========================================================
-
-    print("")
-    print("========================================")
-    print("7. CLIENTE")
-    print("========================================")
-
-    campo_ruc = page.locator(
-        "#form\\:busquedaCompradorComp\\:ruc"
-    )
-
-    campo_ruc.fill(
-        CLIENTE["ruc"]
-    )
-
-    campo_ruc.press(
-        "Tab"
-    )
-
-    esperar(page, 5000)
-
-    razon_social = page.locator(
-        "#form\\:busquedaCompradorComp\\:"
-        "compradorRazonSocial"
-    ).input_value()
-
-    print(
-        "Cliente detectado:",
-        razon_social
-    )
-
-    if "PARDO" not in razon_social.upper():
-        raise Exception(
-            "No se cargó correctamente el cliente."
-        )
-
-    # ========================================================
-    # 8. PRODUCTO
-    # ========================================================
-
-    print("")
-    print("========================================")
-    print("8. PRODUCTO")
-    print("========================================")
-
-    producto = page.locator(
-        "#form\\:productoBusquedaComposite\\:"
-        "autoCompleteProducto_input"
-    )
-
-    producto.click()
-    producto.fill("A")
-
-    esperar(page, 4000)
-
-    candidatos = page.locator(
-        "li:visible"
-    ).filter(
-        has_text="ASESORIA"
-    )
-
-    print(
-        "Resultados encontrados:",
-        candidatos.count()
-    )
-
-    producto_seleccionado = False
-
-    for i in range(candidatos.count()):
-
-        candidato = candidatos.nth(i)
-
-        try:
-            texto = candidato.inner_text().strip()
-
-            print(
-                "Opción:",
-                texto
+        if "Ingresar al Sistema" in cuerpo or "*RUC:" in cuerpo and "*Clave:" in cuerpo:
+            screenshot(page, "01_login_fallido.png")
+            raise RuntimeError(
+                "El SRI no aceptó el inicio de sesión. Revisa SRI_RUC/SRI_CLAVE o un mensaje mostrado por el portal."
             )
 
-            if (
-                "ASESORIA CONTABILIDAD"
-                in texto.upper()
-            ):
-                candidato.click(
-                    force=True
-                )
+        print("LOGIN CORRECTO")
+        print("URL después del login:", page.url)
+        screenshot(page, "01_login_correcto.png")
 
-                producto_seleccionado = True
+        # ====================================================
+        # 2. ABRIR FACTURA
+        # ====================================================
+        log("2. ABRIENDO PANTALLA DE FACTURA")
+
+        page.goto(URL_FACTURA, wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(4000)
+
+        cuerpo = page.locator("body").inner_text()
+        if "Emisión - Factura" not in cuerpo:
+            screenshot(page, "02_factura_no_abre.png")
+            raise RuntimeError("No se abrió la pantalla Emisión - Factura después del login.")
+
+        print("PANTALLA DE FACTURA CORRECTA")
+        screenshot(page, "02_factura_abierta.png")
+
+        # ====================================================
+        # 3. ESTABLECIMIENTO
+        # ====================================================
+        log("3. ESTABLECIMIENTO")
+        seleccionar_option_por_texto(
+            page,
+            "#form\\:cabeceraComprobanteDlg\\:j_idt61_input",
+            "001 - AV ELOY ALFARO",
+        )
+
+        # ====================================================
+        # 4. FECHA
+        # ====================================================
+        log("4. FECHA DE EMISIÓN")
+        fecha = page.locator("#form\\:identifiacionDelComprobante\\:calFechaEmi_input")
+        fecha.wait_for(state="visible", timeout=30000)
+        print("Fecha SRI:", fecha.input_value())
+
+        # ====================================================
+        # 5. PUNTO DE EMISIÓN
+        # ====================================================
+        log("5. PUNTO DE EMISIÓN")
+        seleccionar_option_por_texto(
+            page,
+            "#form\\:identifiacionDelComprobante\\:selectsecuencial_input",
+            "100",
+        )
+
+        # ====================================================
+        # 6. TIPO IDENTIFICACIÓN = RUC
+        # ====================================================
+        log("6. TIPO DE IDENTIFICACIÓN")
+        seleccionar_option_por_texto(
+            page,
+            "#form\\:busquedaCompradorComp\\:cmbTipoIdentificacion_input",
+            "RUC",
+        )
+
+        # ====================================================
+        # 7. CLIENTE
+        # ====================================================
+        log("7. CLIENTE")
+        campo_ruc = page.locator("#form\\:busquedaCompradorComp\\:ruc")
+        campo_ruc.wait_for(state="visible", timeout=30000)
+        campo_ruc.fill(CLIENTE_RUC)
+        campo_ruc.press("Tab")
+        page.wait_for_timeout(4500)
+
+        razon = page.locator("#form\\:busquedaCompradorComp\\:compradorRazonSocial")
+        razon_social = razon.input_value()
+        print("Razón social cargada:", razon_social)
+
+        if not razon_social.strip():
+            screenshot(page, "03_cliente_no_cargado.png")
+            raise RuntimeError("El SRI no cargó la razón social del cliente.")
+
+        # ====================================================
+        # 8. PRODUCTO - AUTOCOMPLETE PRIMEFACES
+        # ====================================================
+        log("8. PRODUCTO ASESORIA CONTABILIDAD")
+
+        producto = page.locator(
+            "#form\\:productoBusquedaComposite\\:autoCompleteProducto_input"
+        )
+        producto.wait_for(state="visible", timeout=30000)
+        producto.click()
+        producto.fill("")
+        producto.press_sequentially(PRODUCTO_BUSQUEDA, delay=160)
+
+        # PrimeFaces crea un panel dinámico para el autocomplete.
+        panel = page.locator(
+            "#form\\:productoBusquedaComposite\\:autoCompleteProducto_panel"
+        )
+
+        try:
+            panel.wait_for(state="visible", timeout=15000)
+        except Exception:
+            # Fallback por si el id del panel cambia, pero la clase PrimeFaces se mantiene.
+            panel = page.locator(".ui-autocomplete-panel:visible").last
+            panel.wait_for(state="visible", timeout=10000)
+
+        screenshot(page, "04_autocomplete_abierto.png")
+
+        items = panel.locator("li.ui-autocomplete-item")
+        print("Resultados del autocomplete:", items.count())
+
+        elegido = None
+        for i in range(items.count()):
+            item = items.nth(i)
+            texto = item.inner_text().strip()
+            print(f"  - {texto}")
+            if PRODUCTO_ESPERADO in texto.upper():
+                elegido = item
                 break
 
-        except Exception:
-            pass
+        if elegido is None:
+            # Aceptamos una coincidencia con ASESORIA si el texto exacto cambia ligeramente.
+            for i in range(items.count()):
+                item = items.nth(i)
+                texto = item.inner_text().strip()
+                if "ASESORIA" in texto.upper():
+                    elegido = item
+                    break
 
-    if not producto_seleccionado:
-        producto.focus()
-        page.keyboard.press("ArrowDown")
-        page.keyboard.press("Enter")
+        if elegido is None:
+            screenshot(page, "05_producto_no_encontrado.png")
+            raise RuntimeError("El autocomplete abrió, pero no devolvió ASESORIA CONTABILIDAD.")
 
-    esperar(page, 5000)
+        print("Seleccionando:", elegido.inner_text().strip())
+        elegido.click(force=True)
+        page.wait_for_timeout(5000)
 
-    # ========================================================
-    # 9. VALIDAR PRODUCTO
-    # ========================================================
+        # ====================================================
+        # 9. VALIDAR QUE EL PRODUCTO SE AGREGÓ A LA TABLA
+        # ====================================================
+        log("9. VALIDANDO PRODUCTO EN LA FACTURA")
 
-    print("")
-    print("========================================")
-    print("9. VALIDANDO PRODUCTO")
-    print("========================================")
-
-    filas = page.locator(
-        "tr"
-    ).filter(
-        has_text="ASESORIA CONTABILIDAD"
-    )
-
-    if filas.count() == 0:
-        print(
-            page.locator(
-                "body"
-            ).inner_text()
-        )
-
-        raise Exception(
-            "ASESORIA CONTABILIDAD no fue agregado."
-        )
-
-    fila = filas.first
-
-    print(
-        "Producto agregado:"
-    )
-
-    print(
-        fila.inner_text()
-    )
-
-    # ========================================================
-    # 10. MOSTRAR CAMPOS DEL PRODUCTO
-    # ========================================================
-
-    print("")
-    print("========================================")
-    print("10. CAMPOS DEL PRODUCTO")
-    print("========================================")
-
-    inputs_producto = fila.locator(
-        "input"
-    )
-
-    for i in range(
-        inputs_producto.count()
-    ):
-
-        inp = inputs_producto.nth(i)
-
+        fila = page.locator("tr").filter(has_text="ASESORIA").first
         try:
-            print(
-                i,
-                "| ID:",
-                inp.get_attribute("id"),
-                "| NAME:",
-                inp.get_attribute("name"),
-                "| VALUE:",
-                inp.get_attribute("value"),
-                "| TYPE:",
-                inp.get_attribute("type")
+            fila.wait_for(state="visible", timeout=15000)
+        except Exception:
+            screenshot(page, "06_producto_no_agregado.png")
+            print(page.locator("body").inner_text())
+            raise RuntimeError(
+                "Se seleccionó ASESORIA en el autocomplete, pero el SRI no la agregó a la tabla de detalle."
             )
 
-        except Exception:
-            pass
+        texto_fila = fila.inner_text().strip()
+        print("PRODUCTO AGREGADO CORRECTAMENTE")
+        print("Fila:", texto_fila)
+        screenshot(page, "06_producto_agregado.png")
 
-    print("")
-    print("========================================")
-    print("PRUEBA TERMINADA HASTA PRODUCTO")
-    print("========================================")
+        # ====================================================
+        # 10. IDENTIFICAR CAMPOS REALES DE LA FILA
+        # ====================================================
+        log("10. CAMPOS REALES DEL PRODUCTO")
+        inputs_fila = fila.locator("input")
+        print("Total inputs en fila:", inputs_fila.count())
 
-    browser.close()
+        for i in range(inputs_fila.count()):
+            inp = inputs_fila.nth(i)
+            print(
+                i,
+                "| id=", inp.get_attribute("id"),
+                "| name=", inp.get_attribute("name"),
+                "| type=", inp.get_attribute("type"),
+                "| value=", inp.get_attribute("value"),
+            )
+
+        log("AVANCE CONFIRMADO: LOGIN + FACTURA + CLIENTE + PRODUCTO FUNCIONAN")
+        print("En la siguiente etapa se fijará precio, pago, campo adicional y firma usando los campos reales obtenidos arriba.")
+
+    except Exception as e:
+        screenshot(page, "99_error_final.png")
+        print("\nERROR CONTROLADO:", str(e))
+        raise
+
+    finally:
+        browser.close()
