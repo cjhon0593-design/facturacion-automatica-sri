@@ -1,0 +1,54 @@
+name: Enviar Factura por WhatsApp
+
+on:
+  workflow_dispatch:
+    inputs:
+      cliente_id:
+        description: Cliente cuya última factura autorizada se enviará
+        required: true
+        default: gloria_pardo
+        type: choice
+        options:
+          - gloria_pardo
+          - fcomex
+
+jobs:
+  enviar-whatsapp:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright requests
+          playwright install --with-deps chromium
+
+      - name: Descargar RIDE y enviar a WhatsApp
+        env:
+          SRI_RUC: ${{ secrets.SRI_RUC }}
+          SRI_CLAVE: ${{ secrets.SRI_CLAVE }}
+          CLIENTE_ID: ${{ inputs.cliente_id }}
+          META_WHATSAPP_TOKEN: ${{ secrets.META_WHATSAPP_TOKEN }}
+          META_WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.META_WHATSAPP_PHONE_NUMBER_ID }}
+          META_WHATSAPP_DESTINO: ${{ secrets.META_WHATSAPP_DESTINO }}
+          META_GRAPH_VERSION: ${{ secrets.META_GRAPH_VERSION }}
+        run: python enviar_whatsapp.py
+
+      - name: Guardar diagnóstico y PDF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: whatsapp-${{ github.run_number }}
+          path: |
+            debug_whatsapp/
+            facturas/
+          if-no-files-found: ignore
+          retention-days: 7
