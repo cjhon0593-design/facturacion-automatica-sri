@@ -1,19 +1,36 @@
 from playwright.sync_api import sync_playwright
 import os
+import json
 from pathlib import Path
 
 SRI_RUC = os.getenv("SRI_RUC")
 SRI_CLAVE = os.getenv("SRI_CLAVE")
+CLIENTE_ID = os.getenv("CLIENTE_ID", "gloria_pardo")
 
 URL_LOGIN = "https://facturadorsri.sri.gob.ec/portal-facturadorsri-internet/pages/inicio.html"
 URL_FACTURA = "https://facturadorsri.sri.gob.ec/portal-facturadorsri-internet/pages/comprobantes/factura/Factura.html"
 
-CLIENTE_RUC = "1723041156001"
-PRODUCTO_BUSQUEDA = "ASESORIA"
-PRODUCTO_ESPERADO = "ASESORIA CONTABILIDAD"
-
 DEBUG_DIR = Path("debug")
 DEBUG_DIR.mkdir(exist_ok=True)
+
+CLIENTES_PATH = Path("clientes.json")
+if not CLIENTES_PATH.exists():
+    raise RuntimeError("No existe clientes.json")
+
+with CLIENTES_PATH.open("r", encoding="utf-8") as f:
+    CLIENTES = json.load(f)
+
+if CLIENTE_ID not in CLIENTES:
+    raise RuntimeError(f"Cliente '{CLIENTE_ID}' no existe en clientes.json")
+
+CLIENTE = CLIENTES[CLIENTE_ID]
+
+if not CLIENTE.get("activo", False):
+    raise RuntimeError(f"El cliente '{CLIENTE_ID}' está desactivado")
+
+CLIENTE_RUC = CLIENTE["ruc"]
+PRODUCTO_BUSQUEDA = CLIENTE.get("producto", "ASESORIA CONTABILIDAD")
+PRODUCTO_ESPERADO = CLIENTE.get("producto", "ASESORIA CONTABILIDAD")
 
 
 def log(titulo):
@@ -48,6 +65,27 @@ def seleccionar_option_por_texto(page, selector, texto):
     raise RuntimeError(f"No se encontró la opción: {texto}")
 
 
+def sobrescribir_campo(page, selector, valor, nombre):
+    campo = page.locator(selector)
+    campo.wait_for(state="visible", timeout=30000)
+
+    if not campo.is_editable():
+        raise RuntimeError(f"El campo {nombre} no está editable en el SRI")
+
+    campo.fill("")
+    campo.fill(str(valor))
+    campo.press("Tab")
+    page.wait_for_timeout(500)
+
+    valor_final = campo.input_value().strip()
+    if valor_final != str(valor).strip():
+        raise RuntimeError(
+            f"No se pudo guardar {nombre}. Esperado='{valor}' / Actual='{valor_final}'"
+        )
+
+    print(f"{nombre}: {valor_final}")
+
+
 if not SRI_RUC:
     raise RuntimeError("Falta el secret SRI_RUC")
 if not SRI_CLAVE:
@@ -60,6 +98,11 @@ with sync_playwright() as p:
     page.set_default_timeout(30000)
 
     try:
+        log(f"CLIENTE SELECCIONADO: {CLIENTE_ID}")
+        print("RUC:", CLIENTE_RUC)
+        print("Razón social esperada:", CLIENTE["razon_social"])
+        print("Subtotal configurado:", CLIENTE["subtotal"])
+
         # 1. LOGIN
         log("1. INICIANDO SESIÓN EN EL SRI")
         page.goto(URL_LOGIN, wait_until="domcontentloaded", timeout=60000)
@@ -113,7 +156,7 @@ with sync_playwright() as p:
         seleccionar_option_por_texto(
             page,
             "#form\\:busquedaCompradorComp\\:cmbTipoIdentificacion_input",
-            "RUC",
+            CLIENTE.get("tipo_identificacion", "RUC"),
         )
 
         # 7. CLIENTE
@@ -124,12 +167,35 @@ with sync_playwright() as p:
         page.wait_for_timeout(4500)
 
         razon = page.locator("#form\\:busquedaCompradorComp\\:compradorRazonSocial").input_value()
-        print("Razón social cargada:", razon)
+        print("Razón social cargada por SRI:", razon)
         if not razon.strip():
             raise RuntimeError("El SRI no cargó el cliente")
 
-        # 8. PRODUCTO
-        log("8. PRODUCTO ASESORIA CONTABILIDAD")
+        # 8. SOBRESCRIBIR DATOS MANUALES DEL CLIENTE
+        log("8. DATOS MANUALES DEL CLIENTE")
+        sobrescribir_campo(
+            page,
+            "#form\\:busquedaCompradorComp\\:compradorDireccion",
+            CLIENTE["direccion"],
+            "Dirección",
+        )
+        sobrescribir_campo(
+            page,
+            "#form\\:busquedaCompradorComp\\:compradorTelefono",
+            CLIENTE["telefono"],
+            "Teléfono",
+        )
+        sobrescribir_campo(
+            page,
+            "#form\\:busquedaCompradorComp\\:compradorEmail",
+            CLIENTE["correo"],
+            "Correo",
+        )
+        screenshot(page, "03_cliente_datos_manual.png")
+        print("DATOS MANUALES DEL CLIENTE CONFIRMADOS")
+
+        # 9. PRODUCTO
+        log("9. PRODUCTO ASESORIA CONTABILIDAD")
         producto = page.locator("#form\\:productoBusquedaComposite\\:autoCompleteProducto_input")
         producto.click()
         producto.fill("")
@@ -137,8 +203,6 @@ with sync_playwright() as p:
         page.wait_for_timeout(4000)
         screenshot(page, "04_autocomplete_abierto.png")
 
-        # La captura real del SRI mostró el texto visible ASESORIA CONTABILIDAD,
-        # aunque PrimeFaces no lo expone como li.ui-autocomplete-item.
         resultado = page.get_by_text(PRODUCTO_ESPERADO, exact=True)
         print("Coincidencias visuales exactas:", resultado.count())
 
@@ -148,18 +212,11 @@ with sync_playwright() as p:
             try:
                 if candidato.is_visible():
                     elegido = candidato
-                    print(
-                        "Elemento encontrado:",
-                        candidato.evaluate("e => e.tagName"),
-                        candidato.get_attribute("id"),
-                        candidato.get_attribute("class"),
-                    )
                     break
             except Exception:
                 pass
 
         if elegido is None:
-            # Fallback: cualquier elemento visible cuyo texto contenga ASESORIA CONTABILIDAD.
             candidatos = page.locator(":text('ASESORIA CONTABILIDAD')")
             for i in range(candidatos.count()):
                 candidato = candidatos.nth(i)
@@ -172,29 +229,28 @@ with sync_playwright() as p:
 
         if elegido is None:
             screenshot(page, "05_producto_no_encontrado.png")
-            raise RuntimeError("El SRI muestra el autocomplete, pero Playwright no pudo localizar el texto visible")
+            raise RuntimeError("No se pudo localizar ASESORIA CONTABILIDAD")
 
         print("Haciendo clic en ASESORIA CONTABILIDAD")
         elegido.click(force=True)
         page.wait_for_timeout(5000)
-        screenshot(page, "06_despues_click_producto.png")
 
-        # 9. VALIDAR PRODUCTO EN TABLA
-        log("9. VALIDANDO PRODUCTO EN LA FACTURA")
+        # 10. VALIDAR PRODUCTO EN TABLA
+        log("10. VALIDANDO PRODUCTO EN LA FACTURA")
         filas = page.locator("tr").filter(has_text="ASESORIA CONTABILIDAD")
         print("Filas ASESORIA encontradas:", filas.count())
 
         if filas.count() == 0:
             screenshot(page, "07_producto_no_agregado.png")
-            raise RuntimeError("Se hizo clic en ASESORIA CONTABILIDAD, pero no se agregó a la tabla")
+            raise RuntimeError("El producto no se agregó a la tabla")
 
         fila = filas.first
         print("PRODUCTO AGREGADO CORRECTAMENTE")
         print("Fila:", fila.inner_text())
         screenshot(page, "07_producto_agregado.png")
 
-        # 10. CAPTURAR CAMPOS DEL PRODUCTO
-        log("10. CAMPOS REALES DEL PRODUCTO")
+        # 11. CAMPOS DEL PRODUCTO
+        log("11. CAMPOS REALES DEL PRODUCTO")
         inputs = fila.locator("input")
         print("Total inputs en la fila:", inputs.count())
 
@@ -208,7 +264,7 @@ with sync_playwright() as p:
                 "| value=", inp.get_attribute("value"),
             )
 
-        log("AVANCE REAL CONFIRMADO: PRODUCTO AGREGADO")
+        log("AVANCE CONFIRMADO: CLIENTE + DATOS MANUALES + PRODUCTO")
 
     except Exception as e:
         screenshot(page, "99_error_final.png")
