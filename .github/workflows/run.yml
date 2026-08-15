@@ -2,7 +2,10 @@ name: Facturacion Automatica
 
 on:
   schedule:
-    - cron: '0 13 1 * *'  # 08:00 Ecuador (UTC-5)
+    # GitHub Actions usa UTC. 13:00 UTC = 08:00 Ecuador (UTC-5).
+    # Se ejecuta el día 1 de cada mes.
+    - cron: '0 13 1 * *'
+
   workflow_dispatch:
     inputs:
       cliente_id:
@@ -29,9 +32,19 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
 
+    # En ejecución automática procesa ambos clientes.
+    # En ejecución manual procesa únicamente el cliente seleccionado.
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        cliente_id: ${{ fromJSON(github.event_name == 'schedule' && '["gloria_pardo","fcomex"]' || format('["{0}"]', inputs.cliente_id)) }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Instalar Python
         uses: actions/setup-python@v5
@@ -44,13 +57,20 @@ jobs:
           pip install playwright
           playwright install --with-deps chromium
 
+      - name: Mostrar configuración
+        run: |
+          echo "Evento: ${{ github.event_name }}"
+          echo "Cliente: ${{ matrix.cliente_id }}"
+          echo "Modo: ${{ github.event_name == 'schedule' && 'PRODUCCION' || inputs.modo_envio }}"
+
       - name: Ejecutar script
         env:
           SRI_RUC: ${{ secrets.SRI_RUC }}
           SRI_CLAVE: ${{ secrets.SRI_CLAVE }}
           CERT_PASS: ${{ secrets.CERT_PASS }}
-          CLIENTE_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.cliente_id || 'gloria_pardo' }}
-          MODO_ENVIO: ${{ github.event_name == 'workflow_dispatch' && inputs.modo_envio || 'PRUEBA' }}
+          CLIENTE_ID: ${{ matrix.cliente_id }}
+          # Las ejecuciones del día 1 son reales. Las manuales respetan la opción elegida.
+          MODO_ENVIO: ${{ github.event_name == 'schedule' && 'PRODUCCION' || inputs.modo_envio }}
         run: python main.py
 
       - name: Persistir registro anti-duplicado
@@ -60,8 +80,9 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add emisiones.json
-            git commit -m "Registrar resultado de facturacion automatica [skip ci]"
-            git push
+            git commit -m "Registrar resultado de facturacion automatica - ${{ matrix.cliente_id }} [skip ci]"
+            git pull --rebase origin main
+            git push origin main
           else
             echo "Sin cambios en emisiones.json"
           fi
@@ -70,7 +91,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: diagnostico-sri-${{ github.run_number }}
+          name: diagnostico-sri-${{ matrix.cliente_id }}-${{ github.run_number }}
           path: debug/
           if-no-files-found: ignore
           retention-days: 7
