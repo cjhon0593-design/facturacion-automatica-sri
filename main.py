@@ -194,18 +194,27 @@ with sync_playwright() as p:
         timeout=60000
     )
 
-    page.locator(
-        'input[name="loginForm:nombrusuario"]'
-    ).fill(SRI_RUC)
+    # Campo RUC
+campo_usuario = page.locator("#loginForm\\:nombrusuario")
+campo_usuario.wait_for(state="visible", timeout=30000)
+campo_usuario.fill(SRI_RUC)
 
-    page.locator(
-        'input[name="loginForm:passwordInput"]'
-    ).fill(SRI_CLAVE)
+# Campo contraseña
+campo_clave = page.locator("#loginForm\\:passwordInput")
+campo_clave.wait_for(state="visible", timeout=30000)
+campo_clave.fill(SRI_CLAVE)
 
-    page.get_by_role(
-        "button",
-        name="Ingresar"
-    ).click()
+# Botón Ingresar
+page.get_by_role(
+    "button",
+    name="Ingresar",
+    exact=True
+).click()
+
+esperar(page, 6000)
+
+print("LOGIN COMPLETADO")
+print("URL:", page.url)
 
     esperar(page, 6000)
 
