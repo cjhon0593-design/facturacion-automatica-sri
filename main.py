@@ -2,6 +2,8 @@ from playwright.sync_api import sync_playwright
 import os
 import json
 from pathlib import Path
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 SRI_RUC = os.getenv("SRI_RUC")
 SRI_CLAVE = os.getenv("SRI_CLAVE")
@@ -13,24 +15,27 @@ URL_FACTURA = "https://facturadorsri.sri.gob.ec/portal-facturadorsri-internet/pa
 DEBUG_DIR = Path("debug")
 DEBUG_DIR.mkdir(exist_ok=True)
 
-CLIENTES_PATH = Path("clientes.json")
-if not CLIENTES_PATH.exists():
-    raise RuntimeError("No existe clientes.json")
-
-with CLIENTES_PATH.open("r", encoding="utf-8") as f:
+with Path("clientes.json").open("r", encoding="utf-8") as f:
     CLIENTES = json.load(f)
 
 if CLIENTE_ID not in CLIENTES:
     raise RuntimeError(f"Cliente '{CLIENTE_ID}' no existe en clientes.json")
 
 CLIENTE = CLIENTES[CLIENTE_ID]
-
 if not CLIENTE.get("activo", False):
     raise RuntimeError(f"El cliente '{CLIENTE_ID}' está desactivado")
 
-CLIENTE_RUC = CLIENTE["ruc"]
-PRODUCTO_BUSQUEDA = CLIENTE.get("producto", "ASESORIA CONTABILIDAD")
-PRODUCTO_ESPERADO = CLIENTE.get("producto", "ASESORIA CONTABILIDAD")
+MESES = {
+    1: "ENERO", 2: "FEBRERO", 3: "MARZO", 4: "ABRIL",
+    5: "MAYO", 6: "JUNIO", 7: "JULIO", 8: "AGOSTO",
+    9: "SEPTIEMBRE", 10: "OCTUBRE", 11: "NOVIEMBRE", 12: "DICIEMBRE"
+}
+
+ahora_ec = datetime.now(ZoneInfo("America/Guayaquil"))
+detalle_mes = CLIENTE.get(
+    "campo_adicional_plantilla",
+    "SERVICIOS MES DE {MES} {ANIO}"
+).format(MES=MESES[ahora_ec.month], ANIO=ahora_ec.year)
 
 
 def log(titulo):
@@ -58,32 +63,52 @@ def seleccionar_option_por_texto(page, selector, texto):
         if texto.upper() in etiqueta.upper():
             select.select_option(value=valor)
             select.dispatch_event("change")
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(1800)
             print(f"Seleccionado: {etiqueta} | valor={valor}")
-            return
+            return etiqueta
 
-    raise RuntimeError(f"No se encontró la opción: {texto}")
+    disponibles = [opciones.nth(i).inner_text().strip() for i in range(opciones.count())]
+    raise RuntimeError(f"No se encontró '{texto}'. Opciones: {disponibles}")
 
 
 def sobrescribir_campo(page, selector, valor, nombre):
     campo = page.locator(selector)
     campo.wait_for(state="visible", timeout=30000)
-
-    if not campo.is_editable():
-        raise RuntimeError(f"El campo {nombre} no está editable en el SRI")
-
-    campo.fill("")
     campo.fill(str(valor))
     campo.press("Tab")
     page.wait_for_timeout(500)
+    actual = campo.input_value().strip()
+    if actual != str(valor).strip():
+        raise RuntimeError(f"No se pudo guardar {nombre}. Esperado='{valor}' / Actual='{actual}'")
+    print(f"{nombre}: {actual}")
 
-    valor_final = campo.input_value().strip()
-    if valor_final != str(valor).strip():
-        raise RuntimeError(
-            f"No se pudo guardar {nombre}. Esperado='{valor}' / Actual='{valor_final}'"
-        )
 
-    print(f"{nombre}: {valor_final}")
+def valor_float(locator):
+    valor = locator.get_attribute("value")
+    if valor is None:
+        try:
+            valor = locator.input_value()
+        except Exception:
+            valor = "0"
+    return float(str(valor).replace(",", "."))
+
+
+def buscar_boton_visible(page, texto):
+    candidatos = page.get_by_role("button", name=texto, exact=True)
+    for i in range(candidatos.count()):
+        try:
+            if candidatos.nth(i).is_visible():
+                return candidatos.nth(i)
+        except Exception:
+            pass
+    candidatos = page.get_by_text(texto, exact=True)
+    for i in range(candidatos.count()):
+        try:
+            if candidatos.nth(i).is_visible():
+                return candidatos.nth(i)
+        except Exception:
+            pass
+    return None
 
 
 if not SRI_RUC:
@@ -99,27 +124,23 @@ with sync_playwright() as p:
 
     try:
         log(f"CLIENTE SELECCIONADO: {CLIENTE_ID}")
-        print("RUC:", CLIENTE_RUC)
+        print("RUC:", CLIENTE["ruc"])
         print("Razón social esperada:", CLIENTE["razon_social"])
-        print("Subtotal configurado:", CLIENTE["subtotal"])
+        print("Subtotal:", CLIENTE["subtotal"])
+        print("IVA:", CLIENTE["iva"])
+        print("Total:", CLIENTE["total"])
+        print("Información adicional:", detalle_mes)
 
         # 1. LOGIN
         log("1. INICIANDO SESIÓN EN EL SRI")
         page.goto(URL_LOGIN, wait_until="domcontentloaded", timeout=60000)
         page.wait_for_timeout(2500)
-
-        usuario = page.locator('input[type="text"]:visible').first
-        clave = page.locator('input[type="password"]:visible').first
-        usuario.fill(SRI_RUC)
-        clave.fill(SRI_CLAVE)
+        page.locator('input[type="text"]:visible').first.fill(SRI_RUC)
+        page.locator('input[type="password"]:visible').first.fill(SRI_CLAVE)
         page.get_by_role("button", name="Ingresar", exact=True).click()
         page.wait_for_timeout(5000)
-
-        cuerpo = page.locator("body").inner_text()
-        if "Ingresar al Sistema" in cuerpo:
-            screenshot(page, "01_login_fallido.png")
+        if "Ingresar al Sistema" in page.locator("body").inner_text():
             raise RuntimeError("El SRI no aceptó el inicio de sesión")
-
         print("LOGIN CORRECTO")
 
         # 2. FACTURA
@@ -162,50 +183,30 @@ with sync_playwright() as p:
         # 7. CLIENTE
         log("7. CLIENTE")
         campo_ruc = page.locator("#form\\:busquedaCompradorComp\\:ruc")
-        campo_ruc.fill(CLIENTE_RUC)
+        campo_ruc.fill(CLIENTE["ruc"])
         campo_ruc.press("Tab")
         page.wait_for_timeout(4500)
-
         razon = page.locator("#form\\:busquedaCompradorComp\\:compradorRazonSocial").input_value()
         print("Razón social cargada por SRI:", razon)
         if not razon.strip():
             raise RuntimeError("El SRI no cargó el cliente")
 
-        # 8. SOBRESCRIBIR DATOS MANUALES DEL CLIENTE
+        # 8. DATOS MANUALES
         log("8. DATOS MANUALES DEL CLIENTE")
-        sobrescribir_campo(
-            page,
-            "#form\\:busquedaCompradorComp\\:compradorDireccion",
-            CLIENTE["direccion"],
-            "Dirección",
-        )
-        sobrescribir_campo(
-            page,
-            "#form\\:busquedaCompradorComp\\:compradorTelefono",
-            CLIENTE["telefono"],
-            "Teléfono",
-        )
-        sobrescribir_campo(
-            page,
-            "#form\\:busquedaCompradorComp\\:compradorEmail",
-            CLIENTE["correo"],
-            "Correo",
-        )
+        sobrescribir_campo(page, "#form\\:busquedaCompradorComp\\:compradorDireccion", CLIENTE["direccion"], "Dirección")
+        sobrescribir_campo(page, "#form\\:busquedaCompradorComp\\:compradorTelefono", CLIENTE["telefono"], "Teléfono")
+        sobrescribir_campo(page, "#form\\:busquedaCompradorComp\\:compradorEmail", CLIENTE["correo"], "Correo")
         screenshot(page, "03_cliente_datos_manual.png")
-        print("DATOS MANUALES DEL CLIENTE CONFIRMADOS")
 
         # 9. PRODUCTO
         log("9. PRODUCTO ASESORIA CONTABILIDAD")
         producto = page.locator("#form\\:productoBusquedaComposite\\:autoCompleteProducto_input")
         producto.click()
         producto.fill("")
-        producto.press_sequentially(PRODUCTO_BUSQUEDA, delay=160)
+        producto.press_sequentially(CLIENTE["producto"], delay=140)
         page.wait_for_timeout(4000)
-        screenshot(page, "04_autocomplete_abierto.png")
 
-        resultado = page.get_by_text(PRODUCTO_ESPERADO, exact=True)
-        print("Coincidencias visuales exactas:", resultado.count())
-
+        resultado = page.get_by_text(CLIENTE["producto"], exact=True)
         elegido = None
         for i in range(resultado.count()):
             candidato = resultado.nth(i)
@@ -228,48 +229,143 @@ with sync_playwright() as p:
                     pass
 
         if elegido is None:
-            screenshot(page, "05_producto_no_encontrado.png")
             raise RuntimeError("No se pudo localizar ASESORIA CONTABILIDAD")
 
-        print("Haciendo clic en ASESORIA CONTABILIDAD")
         elegido.click(force=True)
         page.wait_for_timeout(5000)
 
-        # 10. VALIDAR PRODUCTO EN TABLA
+        # 10. VALIDAR FILA
         log("10. VALIDANDO PRODUCTO EN LA FACTURA")
         filas = page.locator("tr").filter(has_text="ASESORIA CONTABILIDAD")
-        print("Filas ASESORIA encontradas:", filas.count())
-
         if filas.count() == 0:
-            screenshot(page, "07_producto_no_agregado.png")
             raise RuntimeError("El producto no se agregó a la tabla")
-
         fila = filas.first
         print("PRODUCTO AGREGADO CORRECTAMENTE")
-        print("Fila:", fila.inner_text())
-        screenshot(page, "07_producto_agregado.png")
 
-        # 11. CAMPOS DEL PRODUCTO
-        log("11. CAMPOS REALES DEL PRODUCTO")
-        inputs = fila.locator("input")
-        print("Total inputs en la fila:", inputs.count())
+        # 11. PRECIO
+        log("11. PRECIO UNITARIO")
+        precio = fila.locator("input[id*='precioUnitarioOutputText']")
+        precio.wait_for(state="visible", timeout=30000)
+        precio.fill(f"{float(CLIENTE['subtotal']):.2f}")
+        precio.press("Tab")
+        page.wait_for_timeout(4500)
+        print("Precio ingresado:", precio.input_value())
 
-        for i in range(inputs.count()):
-            inp = inputs.nth(i)
-            print(
-                i,
-                "| id=", inp.get_attribute("id"),
-                "| name=", inp.get_attribute("name"),
-                "| type=", inp.get_attribute("type"),
-                "| value=", inp.get_attribute("value"),
-            )
+        # 12. VALIDAR IMPUESTOS Y TOTAL DEL PRODUCTO
+        log("12. VALIDANDO SUBTOTAL, IVA Y TOTAL")
+        base = valor_float(fila.locator("input[id*='baseImponibleInputHidden']"))
+        iva = valor_float(fila.locator("input[id*='valorImpuestoInputHidden']"))
+        total_producto = valor_float(fila.locator("input[id*='valorTotalInputHidden']"))
 
-        log("AVANCE CONFIRMADO: CLIENTE + DATOS MANUALES + PRODUCTO")
+        print("Base imponible:", base)
+        print("IVA producto:", iva)
+        print("Total producto:", total_producto)
+
+        if round(base, 2) != round(float(CLIENTE["subtotal"]), 2):
+            raise RuntimeError(f"Subtotal incorrecto: {base}")
+        if round(iva, 2) != round(float(CLIENTE["iva"]), 2):
+            raise RuntimeError(f"IVA incorrecto: {iva}")
+        if round(total_producto, 2) != round(float(CLIENTE["total"]), 2):
+            raise RuntimeError(f"Total incorrecto: {total_producto}")
+
+        print("VALORES CORRECTOS")
+        screenshot(page, "08_valores_correctos.png")
+
+        # 13. FORMA DE PAGO
+        log("13. FORMA DE PAGO")
+        boton_pago = buscar_boton_visible(page, "Añadir forma de pago")
+        if boton_pago is None:
+            raise RuntimeError("No se encontró Añadir forma de pago")
+        boton_pago.click(force=True)
+        page.wait_for_timeout(2000)
+
+        seleccionar_option_por_texto(
+            page,
+            "#form\\:formaPagoComposite\\:selectFormaPago_input",
+            CLIENTE["forma_pago"],
+        )
+
+        valor_pago = page.locator("#form\\:formaPagoComposite\\:impValorPago")
+        valor_pago.fill(f"{float(CLIENTE['forma_pago_valor']):.2f}")
+        valor_pago.press("Tab")
+        page.wait_for_timeout(1000)
+
+        guardar = buscar_boton_visible(page, "Guardar")
+        if guardar is not None:
+            guardar.click(force=True)
+            page.wait_for_timeout(3000)
+
+        print("Forma de pago configurada:", CLIENTE["forma_pago"])
+        print("Valor forma de pago:", CLIENTE["forma_pago_valor"])
+
+        # 14. INFORMACIÓN ADICIONAL
+        log("14. INFORMACIÓN ADICIONAL")
+        boton_adicional = buscar_boton_visible(page, "Añadir campo adicional")
+        if boton_adicional is None:
+            raise RuntimeError("No se encontró Añadir campo adicional")
+        boton_adicional.click(force=True)
+        page.wait_for_timeout(2000)
+
+        nombre_adicional = page.locator("#form\\:campoAdicionalComposite\\:idNombreCampoAdcional")
+        nombre_adicional.wait_for(state="visible", timeout=20000)
+        nombre_adicional.fill(CLIENTE.get("campo_adicional_nombre", "DETALLE"))
+
+        candidatos = page.locator("[id^='form:campoAdicionalComposite:']")
+        descripcion = None
+        for i in range(candidatos.count()):
+            el = candidatos.nth(i)
+            try:
+                tag = el.evaluate("e => e.tagName")
+                el_id = el.get_attribute("id") or ""
+                if (
+                    tag in ["INPUT", "TEXTAREA"]
+                    and "idNombreCampoAdcional" not in el_id
+                    and el.is_visible()
+                    and el.is_editable()
+                ):
+                    descripcion = el
+                    break
+            except Exception:
+                pass
+
+        if descripcion is None:
+            screenshot(page, "09_campo_adicional_no_encontrado.png")
+            raise RuntimeError("No se encontró el campo Descripción de información adicional")
+
+        descripcion.fill(detalle_mes)
+        descripcion.press("Tab")
+
+        guardar = buscar_boton_visible(page, "Guardar")
+        if guardar is not None:
+            guardar.click(force=True)
+            page.wait_for_timeout(3000)
+
+        print("Nombre adicional:", CLIENTE.get("campo_adicional_nombre", "DETALLE"))
+        print("Descripción adicional:", detalle_mes)
+        screenshot(page, "10_factura_preparada.png")
+
+        # 15. VALIDACIÓN FINAL SIN FIRMAR
+        log("15. VALIDACIÓN FINAL - SIN FIRMAR")
+        texto = page.locator("body").inner_text()
+        if CLIENTE["producto"].upper() not in texto.upper():
+            raise RuntimeError("El producto no aparece al final")
+        if detalle_mes.upper() not in texto.upper():
+            raise RuntimeError("La información adicional no aparece al final")
+
+        print("FACTURA PREPARADA CORRECTAMENTE")
+        print("Cliente:", CLIENTE["razon_social"])
+        print("Subtotal:", CLIENTE["subtotal"])
+        print("IVA:", CLIENTE["iva"])
+        print("Total:", CLIENTE["total"])
+        print("Forma de pago:", CLIENTE["forma_pago"])
+        print("Información adicional:", detalle_mes)
+        print("NO SE FIRMÓ NI ENVIÓ EN ESTA PRUEBA")
+
+        log("AVANCE CONFIRMADO: FACTURA COMPLETA LISTA PARA FIRMA")
 
     except Exception as e:
         screenshot(page, "99_error_final.png")
         print("\nERROR CONTROLADO:", str(e))
         raise
-
     finally:
         browser.close()
