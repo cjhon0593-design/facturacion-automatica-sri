@@ -4,7 +4,6 @@ from pathlib import Path
 
 SRI_RUC = os.getenv("SRI_RUC")
 SRI_CLAVE = os.getenv("SRI_CLAVE")
-CERT_PASS = os.getenv("CERT_PASS")
 
 URL_LOGIN = "https://facturadorsri.sri.gob.ec/portal-facturadorsri-internet/pages/inicio.html"
 URL_FACTURA = "https://facturadorsri.sri.gob.ec/portal-facturadorsri-internet/pages/comprobantes/factura/Factura.html"
@@ -44,10 +43,9 @@ def seleccionar_option_por_texto(page, selector, texto):
             select.dispatch_event("change")
             page.wait_for_timeout(2000)
             print(f"Seleccionado: {etiqueta} | valor={valor}")
-            return etiqueta
+            return
 
-    disponibles = [opciones.nth(i).inner_text().strip() for i in range(opciones.count())]
-    raise RuntimeError(f"No se encontró '{texto}'. Opciones: {disponibles}")
+    raise RuntimeError(f"No se encontró la opción: {texto}")
 
 
 if not SRI_RUC:
@@ -62,59 +60,34 @@ with sync_playwright() as p:
     page.set_default_timeout(30000)
 
     try:
-        # ====================================================
-        # 1. LOGIN ROBUSTO
-        # ====================================================
+        # 1. LOGIN
         log("1. INICIANDO SESIÓN EN EL SRI")
-
         page.goto(URL_LOGIN, wait_until="domcontentloaded", timeout=60000)
         page.wait_for_timeout(2500)
 
-        # El portal ha cambiado atributos del login entre ejecuciones.
-        # Usamos los campos visibles, que es la estrategia que ya funcionó.
         usuario = page.locator('input[type="text"]:visible').first
         clave = page.locator('input[type="password"]:visible').first
-
-        usuario.wait_for(state="visible", timeout=30000)
-        clave.wait_for(state="visible", timeout=30000)
-
         usuario.fill(SRI_RUC)
         clave.fill(SRI_CLAVE)
         page.get_by_role("button", name="Ingresar", exact=True).click()
-
-        # Esperar hasta que desaparezca realmente el formulario de acceso.
         page.wait_for_timeout(5000)
-        cuerpo = page.locator("body").inner_text()
 
-        if "Ingresar al Sistema" in cuerpo or "*RUC:" in cuerpo and "*Clave:" in cuerpo:
+        cuerpo = page.locator("body").inner_text()
+        if "Ingresar al Sistema" in cuerpo:
             screenshot(page, "01_login_fallido.png")
-            raise RuntimeError(
-                "El SRI no aceptó el inicio de sesión. Revisa SRI_RUC/SRI_CLAVE o un mensaje mostrado por el portal."
-            )
+            raise RuntimeError("El SRI no aceptó el inicio de sesión")
 
         print("LOGIN CORRECTO")
-        print("URL después del login:", page.url)
-        screenshot(page, "01_login_correcto.png")
 
-        # ====================================================
-        # 2. ABRIR FACTURA
-        # ====================================================
+        # 2. FACTURA
         log("2. ABRIENDO PANTALLA DE FACTURA")
-
         page.goto(URL_FACTURA, wait_until="domcontentloaded", timeout=60000)
         page.wait_for_timeout(4000)
-
-        cuerpo = page.locator("body").inner_text()
-        if "Emisión - Factura" not in cuerpo:
-            screenshot(page, "02_factura_no_abre.png")
-            raise RuntimeError("No se abrió la pantalla Emisión - Factura después del login.")
-
+        if "Emisión - Factura" not in page.locator("body").inner_text():
+            raise RuntimeError("No se abrió la pantalla de factura")
         print("PANTALLA DE FACTURA CORRECTA")
-        screenshot(page, "02_factura_abierta.png")
 
-        # ====================================================
         # 3. ESTABLECIMIENTO
-        # ====================================================
         log("3. ESTABLECIMIENTO")
         seleccionar_option_por_texto(
             page,
@@ -122,17 +95,12 @@ with sync_playwright() as p:
             "001 - AV ELOY ALFARO",
         )
 
-        # ====================================================
         # 4. FECHA
-        # ====================================================
         log("4. FECHA DE EMISIÓN")
         fecha = page.locator("#form\\:identifiacionDelComprobante\\:calFechaEmi_input")
-        fecha.wait_for(state="visible", timeout=30000)
         print("Fecha SRI:", fecha.input_value())
 
-        # ====================================================
-        # 5. PUNTO DE EMISIÓN
-        # ====================================================
+        # 5. PUNTO EMISION
         log("5. PUNTO DE EMISIÓN")
         seleccionar_option_por_texto(
             page,
@@ -140,9 +108,7 @@ with sync_playwright() as p:
             "100",
         )
 
-        # ====================================================
-        # 6. TIPO IDENTIFICACIÓN = RUC
-        # ====================================================
+        # 6. TIPO ID
         log("6. TIPO DE IDENTIFICACIÓN")
         seleccionar_option_por_texto(
             page,
@@ -150,109 +116,90 @@ with sync_playwright() as p:
             "RUC",
         )
 
-        # ====================================================
         # 7. CLIENTE
-        # ====================================================
         log("7. CLIENTE")
         campo_ruc = page.locator("#form\\:busquedaCompradorComp\\:ruc")
-        campo_ruc.wait_for(state="visible", timeout=30000)
         campo_ruc.fill(CLIENTE_RUC)
         campo_ruc.press("Tab")
         page.wait_for_timeout(4500)
 
-        razon = page.locator("#form\\:busquedaCompradorComp\\:compradorRazonSocial")
-        razon_social = razon.input_value()
-        print("Razón social cargada:", razon_social)
+        razon = page.locator("#form\\:busquedaCompradorComp\\:compradorRazonSocial").input_value()
+        print("Razón social cargada:", razon)
+        if not razon.strip():
+            raise RuntimeError("El SRI no cargó el cliente")
 
-        if not razon_social.strip():
-            screenshot(page, "03_cliente_no_cargado.png")
-            raise RuntimeError("El SRI no cargó la razón social del cliente.")
-
-        # ====================================================
-        # 8. PRODUCTO - AUTOCOMPLETE PRIMEFACES
-        # ====================================================
+        # 8. PRODUCTO
         log("8. PRODUCTO ASESORIA CONTABILIDAD")
-
-        producto = page.locator(
-            "#form\\:productoBusquedaComposite\\:autoCompleteProducto_input"
-        )
-        producto.wait_for(state="visible", timeout=30000)
+        producto = page.locator("#form\\:productoBusquedaComposite\\:autoCompleteProducto_input")
         producto.click()
         producto.fill("")
         producto.press_sequentially(PRODUCTO_BUSQUEDA, delay=160)
-
-        # PrimeFaces crea un panel dinámico para el autocomplete.
-        panel = page.locator(
-            "#form\\:productoBusquedaComposite\\:autoCompleteProducto_panel"
-        )
-
-        try:
-            panel.wait_for(state="visible", timeout=15000)
-        except Exception:
-            # Fallback por si el id del panel cambia, pero la clase PrimeFaces se mantiene.
-            panel = page.locator(".ui-autocomplete-panel:visible").last
-            panel.wait_for(state="visible", timeout=10000)
-
+        page.wait_for_timeout(4000)
         screenshot(page, "04_autocomplete_abierto.png")
 
-        items = panel.locator("li.ui-autocomplete-item")
-        print("Resultados del autocomplete:", items.count())
+        # La captura real del SRI mostró el texto visible ASESORIA CONTABILIDAD,
+        # aunque PrimeFaces no lo expone como li.ui-autocomplete-item.
+        resultado = page.get_by_text(PRODUCTO_ESPERADO, exact=True)
+        print("Coincidencias visuales exactas:", resultado.count())
 
         elegido = None
-        for i in range(items.count()):
-            item = items.nth(i)
-            texto = item.inner_text().strip()
-            print(f"  - {texto}")
-            if PRODUCTO_ESPERADO in texto.upper():
-                elegido = item
-                break
+        for i in range(resultado.count()):
+            candidato = resultado.nth(i)
+            try:
+                if candidato.is_visible():
+                    elegido = candidato
+                    print(
+                        "Elemento encontrado:",
+                        candidato.evaluate("e => e.tagName"),
+                        candidato.get_attribute("id"),
+                        candidato.get_attribute("class"),
+                    )
+                    break
+            except Exception:
+                pass
 
         if elegido is None:
-            # Aceptamos una coincidencia con ASESORIA si el texto exacto cambia ligeramente.
-            for i in range(items.count()):
-                item = items.nth(i)
-                texto = item.inner_text().strip()
-                if "ASESORIA" in texto.upper():
-                    elegido = item
-                    break
+            # Fallback: cualquier elemento visible cuyo texto contenga ASESORIA CONTABILIDAD.
+            candidatos = page.locator(":text('ASESORIA CONTABILIDAD')")
+            for i in range(candidatos.count()):
+                candidato = candidatos.nth(i)
+                try:
+                    if candidato.is_visible():
+                        elegido = candidato
+                        break
+                except Exception:
+                    pass
 
         if elegido is None:
             screenshot(page, "05_producto_no_encontrado.png")
-            raise RuntimeError("El autocomplete abrió, pero no devolvió ASESORIA CONTABILIDAD.")
+            raise RuntimeError("El SRI muestra el autocomplete, pero Playwright no pudo localizar el texto visible")
 
-        print("Seleccionando:", elegido.inner_text().strip())
+        print("Haciendo clic en ASESORIA CONTABILIDAD")
         elegido.click(force=True)
         page.wait_for_timeout(5000)
+        screenshot(page, "06_despues_click_producto.png")
 
-        # ====================================================
-        # 9. VALIDAR QUE EL PRODUCTO SE AGREGÓ A LA TABLA
-        # ====================================================
+        # 9. VALIDAR PRODUCTO EN TABLA
         log("9. VALIDANDO PRODUCTO EN LA FACTURA")
+        filas = page.locator("tr").filter(has_text="ASESORIA CONTABILIDAD")
+        print("Filas ASESORIA encontradas:", filas.count())
 
-        fila = page.locator("tr").filter(has_text="ASESORIA").first
-        try:
-            fila.wait_for(state="visible", timeout=15000)
-        except Exception:
-            screenshot(page, "06_producto_no_agregado.png")
-            print(page.locator("body").inner_text())
-            raise RuntimeError(
-                "Se seleccionó ASESORIA en el autocomplete, pero el SRI no la agregó a la tabla de detalle."
-            )
+        if filas.count() == 0:
+            screenshot(page, "07_producto_no_agregado.png")
+            raise RuntimeError("Se hizo clic en ASESORIA CONTABILIDAD, pero no se agregó a la tabla")
 
-        texto_fila = fila.inner_text().strip()
+        fila = filas.first
         print("PRODUCTO AGREGADO CORRECTAMENTE")
-        print("Fila:", texto_fila)
-        screenshot(page, "06_producto_agregado.png")
+        print("Fila:", fila.inner_text())
+        screenshot(page, "07_producto_agregado.png")
 
-        # ====================================================
-        # 10. IDENTIFICAR CAMPOS REALES DE LA FILA
-        # ====================================================
+        # 10. CAPTURAR CAMPOS DEL PRODUCTO
         log("10. CAMPOS REALES DEL PRODUCTO")
-        inputs_fila = fila.locator("input")
-        print("Total inputs en fila:", inputs_fila.count())
+        inputs = fila.locator("input")
+        print("Total inputs en la fila:", inputs.count())
 
-        for i in range(inputs_fila.count()):
-            inp = inputs_fila.nth(i)
+        for i in range(inputs.count()):
+            inp = inputs.nth(i)
             print(
                 i,
                 "| id=", inp.get_attribute("id"),
@@ -261,8 +208,7 @@ with sync_playwright() as p:
                 "| value=", inp.get_attribute("value"),
             )
 
-        log("AVANCE CONFIRMADO: LOGIN + FACTURA + CLIENTE + PRODUCTO FUNCIONAN")
-        print("En la siguiente etapa se fijará precio, pago, campo adicional y firma usando los campos reales obtenidos arriba.")
+        log("AVANCE REAL CONFIRMADO: PRODUCTO AGREGADO")
 
     except Exception as e:
         screenshot(page, "99_error_final.png")
