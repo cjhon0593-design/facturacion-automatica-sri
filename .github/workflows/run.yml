@@ -4,6 +4,26 @@ on:
   schedule:
     - cron: '0 13 1 * *'  # 08:00 Ecuador (UTC-5)
   workflow_dispatch:
+    inputs:
+      cliente_id:
+        description: Cliente a procesar
+        required: true
+        default: gloria_pardo
+        type: choice
+        options:
+          - gloria_pardo
+          - fcomex
+      modo_envio:
+        description: PRUEBA no envía; PRODUCCION firma y envía
+        required: true
+        default: PRUEBA
+        type: choice
+        options:
+          - PRUEBA
+          - PRODUCCION
+
+permissions:
+  contents: write
 
 jobs:
   run-bot:
@@ -29,8 +49,22 @@ jobs:
           SRI_RUC: ${{ secrets.SRI_RUC }}
           SRI_CLAVE: ${{ secrets.SRI_CLAVE }}
           CERT_PASS: ${{ secrets.CERT_PASS }}
-          MODO_ENVIO: PRUEBA
+          CLIENTE_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.cliente_id || 'gloria_pardo' }}
+          MODO_ENVIO: ${{ github.event_name == 'workflow_dispatch' && inputs.modo_envio || 'PRUEBA' }}
         run: python main.py
+
+      - name: Persistir registro anti-duplicado
+        if: always()
+        run: |
+          if ! git diff --quiet -- emisiones.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add emisiones.json
+            git commit -m "Registrar resultado de facturacion automatica [skip ci]"
+            git push
+          else
+            echo "Sin cambios en emisiones.json"
+          fi
 
       - name: Guardar capturas de diagnóstico
         if: always()
