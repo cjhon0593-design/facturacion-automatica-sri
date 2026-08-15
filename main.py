@@ -1,7 +1,6 @@
 from playwright.sync_api import sync_playwright
 import os
 from datetime import datetime
-import sys
 
 
 # ============================================================
@@ -12,25 +11,19 @@ SRI_RUC = os.getenv("SRI_RUC")
 SRI_CLAVE = os.getenv("SRI_CLAVE")
 CERT_PASS = os.getenv("CERT_PASS")
 
-URL_LOGIN = (
-    "https://facturadorsri.sri.gob.ec/"
-    "portal-facturadorsri-internet/pages/inicio.html"
-)
+URL_LOGIN = "https://facturadorsri.sri.gob.ec/portal-facturadorsri-internet/pages/inicio.html"
 
 URL_FACTURA = (
     "https://facturadorsri.sri.gob.ec/"
     "portal-facturadorsri-internet/pages/comprobantes/factura/Factura.html"
 )
 
-
 CLIENTE = {
     "ruc": "1723041156001",
     "nombre": "PARDO AGURTO GLORIA ALEXANDRA",
     "subtotal": 230.00,
-    "iva": 34.50,
     "total": 264.50,
 }
-
 
 MESES = {
     1: "ENERO",
@@ -48,31 +41,17 @@ MESES = {
 }
 
 
-# ============================================================
-# FUNCIONES
-# ============================================================
-
 def esperar(page, ms=1500):
     page.wait_for_timeout(ms)
 
 
-def valor_oculto(page, selector):
-    try:
-        valor = page.locator(selector).get_attribute("value")
-        if valor is None or valor == "":
-            return 0.0
-        return float(valor.replace(",", "."))
-    except Exception:
-        return 0.0
-
-
 def seleccionar_option_por_texto(page, selector, texto_buscado):
-    """
-    Selecciona una opción del <select> real del SRI buscando
-    una palabra dentro del texto de la opción.
-    """
-
     select = page.locator(selector)
+
+    select.wait_for(
+        state="attached",
+        timeout=30000
+    )
 
     opciones = select.locator("option")
 
@@ -84,14 +63,11 @@ def seleccionar_option_por_texto(page, selector, texto_buscado):
 
         if texto_buscado.upper() in texto.upper():
             select.select_option(value=valor)
-
-            # Disparar eventos para PrimeFaces
             select.dispatch_event("change")
             esperar(page, 1500)
 
             print(
-                f"Seleccionado: {texto} "
-                f"(valor={valor})"
+                f"Seleccionado: {texto} | valor={valor}"
             )
 
             return True
@@ -99,54 +75,19 @@ def seleccionar_option_por_texto(page, selector, texto_buscado):
     return False
 
 
-def guardar_si_aparece(page):
-    """
-    Algunos cuadros del SRI muestran Guardar después
-    de añadir pago/campo adicional.
-    """
-
-    botones = page.get_by_role(
-        "button",
-        name="Guardar",
-        exact=True
-    )
-
-    if botones.count() > 0:
-        for i in reversed(range(botones.count())):
-            try:
-                if botones.nth(i).is_visible():
-                    botones.nth(i).click()
-                    esperar(page, 2500)
-                    return True
-            except Exception:
-                pass
-
-    return False
-
-
 # ============================================================
-# VALIDAR SECRETS
+# VALIDAR VARIABLES
 # ============================================================
 
 if not SRI_RUC:
-    raise Exception(
-        "Falta el Secret de GitHub: SRI_RUC"
-    )
+    raise Exception("Falta el Secret SRI_RUC")
 
 if not SRI_CLAVE:
-    raise Exception(
-        "Falta el Secret de GitHub: SRI_CLAVE"
-    )
+    raise Exception("Falta el Secret SRI_CLAVE")
 
 if not CERT_PASS:
-    raise Exception(
-        "Falta el Secret de GitHub: CERT_PASS"
-    )
+    raise Exception("Falta el Secret CERT_PASS")
 
-
-# ============================================================
-# FECHA Y DETALLE
-# ============================================================
 
 hoy = datetime.now()
 
@@ -160,7 +101,7 @@ detalle_factura = (
 
 
 # ============================================================
-# INICIAR PLAYWRIGHT
+# EJECUCIÓN
 # ============================================================
 
 with sync_playwright() as p:
@@ -178,7 +119,6 @@ with sync_playwright() as p:
 
     page.set_default_timeout(30000)
 
-
     # ========================================================
     # 1. LOGIN
     # ========================================================
@@ -194,44 +134,51 @@ with sync_playwright() as p:
         timeout=60000
     )
 
-    # Campo RUC
-campo_usuario = page.locator("#loginForm\\:nombrusuario")
-campo_usuario.wait_for(state="visible", timeout=30000)
-campo_usuario.fill(SRI_RUC)
+    campo_usuario = page.locator(
+        "#loginForm\\:nombrusuario"
+    )
 
-# Campo contraseña
-campo_clave = page.locator("#loginForm\\:passwordInput")
-campo_clave.wait_for(state="visible", timeout=30000)
-campo_clave.fill(SRI_CLAVE)
+    campo_usuario.wait_for(
+        state="visible",
+        timeout=30000
+    )
 
-# Botón Ingresar
-page.get_by_role(
-    "button",
-    name="Ingresar",
-    exact=True
-).click()
+    campo_usuario.fill(
+        SRI_RUC
+    )
 
-esperar(page, 6000)
+    campo_clave = page.locator(
+        "#loginForm\\:passwordInput"
+    )
 
-print("LOGIN COMPLETADO")
-print("URL:", page.url)
+    campo_clave.wait_for(
+        state="visible",
+        timeout=30000
+    )
+
+    campo_clave.fill(
+        SRI_CLAVE
+    )
+
+    page.get_by_role(
+        "button",
+        name="Ingresar",
+        exact=True
+    ).click()
 
     esperar(page, 6000)
 
+    print("LOGIN COMPLETADO")
+    print("URL:", page.url)
 
-    # Verificación REAL del login
-
-    if "Ingresar al Sistema" in page.locator(
+    cuerpo_login = page.locator(
         "body"
-    ).inner_text():
+    ).inner_text()
 
+    if "Ingresar al Sistema" in cuerpo_login:
         raise Exception(
-            "El SRI no aceptó el inicio de sesión. "
-            "Revisa SRI_RUC y SRI_CLAVE."
+            "El SRI no aceptó el inicio de sesión."
         )
-
-    print("LOGIN CORRECTO")
-
 
     # ========================================================
     # 2. ABRIR FACTURA
@@ -239,7 +186,7 @@ print("URL:", page.url)
 
     print("")
     print("========================================")
-    print("2. ABRIENDO FACTURA")
+    print("2. ABRIENDO PANTALLA DE FACTURA")
     print("========================================")
 
     page.goto(
@@ -256,12 +203,10 @@ print("URL:", page.url)
 
     if "Emisión - Factura" not in cuerpo:
         raise Exception(
-            "No fue posible abrir la pantalla "
-            "de emisión de factura."
+            "No se pudo abrir la pantalla de factura."
         )
 
     print("PANTALLA DE FACTURA CORRECTA")
-
 
     # ========================================================
     # 3. ESTABLECIMIENTO
@@ -288,11 +233,10 @@ print("URL:", page.url)
             "No se encontró el establecimiento 001."
         )
 
-    esperar(page, 3000)
-
+    esperar(page, 2500)
 
     # ========================================================
-    # 4. FECHA DE EMISIÓN
+    # 4. FECHA
     # ========================================================
 
     print("")
@@ -305,20 +249,13 @@ print("URL:", page.url)
         "calFechaEmi_input"
     )
 
-    fecha_actual_sri = fecha.input_value()
-
     print(
-        "Fecha colocada por el SRI:",
-        fecha_actual_sri
+        "Fecha SRI:",
+        fecha.input_value()
     )
 
-    # No modificamos la fecha.
-    # Cuando el workflow se ejecute el día 01,
-    # el SRI utilizará esa fecha.
-
-
     # ========================================================
-    # 5. PUNTO DE EMISIÓN 100
+    # 5. PUNTO DE EMISIÓN
     # ========================================================
 
     print("")
@@ -342,26 +279,25 @@ print("URL:", page.url)
             "No se encontró el punto de emisión 100."
         )
 
-    esperar(page, 2500)
-
+    esperar(page, 2000)
 
     # ========================================================
-    # 6. TIPO DE IDENTIFICACIÓN = RUC
+    # 6. TIPO IDENTIFICACIÓN
     # ========================================================
 
     print("")
     print("========================================")
-    print("6. TIPO DE IDENTIFICACIÓN")
+    print("6. TIPO IDENTIFICACIÓN")
     print("========================================")
 
-    tipo_id_selector = (
+    tipo_selector = (
         "#form\\:busquedaCompradorComp\\:"
         "cmbTipoIdentificacion_input"
     )
 
     ok = seleccionar_option_por_texto(
         page,
-        tipo_id_selector,
+        tipo_selector,
         "RUC"
     )
 
@@ -370,9 +306,8 @@ print("URL:", page.url)
             "No se pudo seleccionar RUC."
         )
 
-
     # ========================================================
-    # 7. RUC DEL CLIENTE
+    # 7. CLIENTE
     # ========================================================
 
     print("")
@@ -388,7 +323,9 @@ print("URL:", page.url)
         CLIENTE["ruc"]
     )
 
-    campo_ruc.press("Tab")
+    campo_ruc.press(
+        "Tab"
+    )
 
     esperar(page, 5000)
 
@@ -402,23 +339,18 @@ print("URL:", page.url)
         razon_social
     )
 
-    if (
-        "PARDO" not in
-        razon_social.upper()
-    ):
+    if "PARDO" not in razon_social.upper():
         raise Exception(
-            "El SRI no cargó correctamente "
-            "los datos de Gloria Pardo."
+            "No se cargó correctamente el cliente."
         )
 
-
     # ========================================================
-    # 8. PRODUCTO / SERVICIO
+    # 8. PRODUCTO
     # ========================================================
 
     print("")
     print("========================================")
-    print("8. BUSCANDO ASESORIA CONTABILIDAD")
+    print("8. PRODUCTO")
     print("========================================")
 
     producto = page.locator(
@@ -431,10 +363,6 @@ print("URL:", page.url)
 
     esperar(page, 4000)
 
-
-    # Buscar cualquier elemento de autocomplete
-    # que contenga ASESORIA CONTABILIDAD.
-
     candidatos = page.locator(
         "li:visible"
     ).filter(
@@ -442,7 +370,7 @@ print("URL:", page.url)
     )
 
     print(
-        "Resultados ASESORIA encontrados:",
+        "Resultados encontrados:",
         candidatos.count()
     )
 
@@ -456,7 +384,7 @@ print("URL:", page.url)
             texto = candidato.inner_text().strip()
 
             print(
-                "Resultado:",
+                "Opción:",
                 texto
             )
 
@@ -474,33 +402,15 @@ print("URL:", page.url)
         except Exception:
             pass
 
-
-    # Segunda estrategia:
-    # teclado si PrimeFaces no deja hacer clic.
-
     if not producto_seleccionado:
-
-        print(
-            "Intentando seleccionar producto "
-            "mediante teclado..."
-        )
-
         producto.focus()
-
-        page.keyboard.press(
-            "ArrowDown"
-        )
-
-        page.keyboard.press(
-            "Enter"
-        )
-
+        page.keyboard.press("ArrowDown")
+        page.keyboard.press("Enter")
 
     esperar(page, 5000)
 
-
     # ========================================================
-    # 9. LOCALIZAR FILA DEL PRODUCTO
+    # 9. VALIDAR PRODUCTO
     # ========================================================
 
     print("")
@@ -508,14 +418,13 @@ print("URL:", page.url)
     print("9. VALIDANDO PRODUCTO")
     print("========================================")
 
-    filas_producto = page.locator(
+    filas = page.locator(
         "tr"
     ).filter(
         has_text="ASESORIA CONTABILIDAD"
     )
 
-    if filas_producto.count() == 0:
-
+    if filas.count() == 0:
         print(
             page.locator(
                 "body"
@@ -523,527 +432,57 @@ print("URL:", page.url)
         )
 
         raise Exception(
-            "ASESORIA CONTABILIDAD todavía "
-            "no fue agregado a la factura."
+            "ASESORIA CONTABILIDAD no fue agregado."
         )
 
-    fila = filas_producto.first
+    fila = filas.first
 
     print(
-        "Producto encontrado en factura:"
+        "Producto agregado:"
     )
 
     print(
         fila.inner_text()
     )
 
-
     # ========================================================
-    # 10. PRECIO UNITARIO
-    # ========================================================
-
-    print("")
-    print("========================================")
-    print("10. PRECIO UNITARIO")
-    print("========================================")
-
-    inputs_fila = fila.locator(
-        "input:visible"
-    )
-
-    print(
-        "Inputs en fila producto:",
-        inputs_fila.count()
-    )
-
-    precio_input = None
-
-    # Primero buscamos un input cuyo id/name
-    # contenga "precio".
-
-    for i in range(inputs_fila.count()):
-
-        inp = inputs_fila.nth(i)
-
-        id_input = (
-            inp.get_attribute("id") or ""
-        ).lower()
-
-        name_input = (
-            inp.get_attribute("name") or ""
-        ).lower()
-
-        if (
-            "precio" in id_input
-            or "precio" in name_input
-        ):
-            precio_input = inp
-            break
-
-
-    # Si no tiene nombre "precio",
-    # usamos el último input editable de la fila.
-
-    if precio_input is None:
-
-        editables = []
-
-        for i in range(inputs_fila.count()):
-
-            inp = inputs_fila.nth(i)
-
-            try:
-                if (
-                    inp.is_enabled()
-                    and inp.is_editable()
-                ):
-                    editables.append(inp)
-            except Exception:
-                pass
-
-        if editables:
-            precio_input = editables[-1]
-
-
-    if precio_input is None:
-        raise Exception(
-            "No se encontró el campo "
-            "Precio unitario."
-        )
-
-
-    precio_input.fill(
-        str(CLIENTE["subtotal"])
-    )
-
-    precio_input.press("Tab")
-
-    esperar(page, 5000)
-
-
-    # ========================================================
-    # 11. VALIDAR SUBTOTAL E IVA
+    # 10. MOSTRAR CAMPOS DEL PRODUCTO
     # ========================================================
 
     print("")
     print("========================================")
-    print("11. VALIDANDO VALORES")
+    print("10. CAMPOS DEL PRODUCTO")
     print("========================================")
 
-    subtotal = valor_oculto(
-        page,
-        "#form\\:subtotalSinImpuestosHidden"
+    inputs_producto = fila.locator(
+        "input"
     )
-
-    iva = valor_oculto(
-        page,
-        "#form\\:totalIva12Hidden"
-    )
-
-    total = valor_oculto(
-        page,
-        "#form\\:totalFacturaHidden"
-    )
-
-    print(
-        "Subtotal SRI:",
-        subtotal
-    )
-
-    print(
-        "IVA SRI:",
-        iva
-    )
-
-    print(
-        "Total SRI:",
-        total
-    )
-
-
-    # Algunos nombres internos del portal
-    # conservan referencias antiguas como IVA12,
-    # por eso la validación principal será
-    # subtotal y total.
-
-    if round(
-        subtotal,
-        2
-    ) != CLIENTE["subtotal"]:
-
-        raise Exception(
-            f"Subtotal incorrecto. "
-            f"Esperado: {CLIENTE['subtotal']} "
-            f"/ SRI: {subtotal}"
-        )
-
-
-    if round(
-        total,
-        2
-    ) != CLIENTE["total"]:
-
-        raise Exception(
-            f"Total incorrecto. "
-            f"Esperado: {CLIENTE['total']} "
-            f"/ SRI: {total}"
-        )
-
-
-    print(
-        "VALORES CORRECTOS"
-    )
-
-
-    # ========================================================
-    # 12. FORMA DE PAGO
-    # ========================================================
-
-    print("")
-    print("========================================")
-    print("12. FORMA DE PAGO")
-    print("========================================")
-
-    page.get_by_text(
-        "Añadir forma de pago",
-        exact=True
-    ).click()
-
-    esperar(page, 2000)
-
-
-    forma_pago_selector = (
-        "#form\\:formaPagoComposite\\:"
-        "selectFormaPago_input"
-    )
-
-    ok = seleccionar_option_por_texto(
-        page,
-        forma_pago_selector,
-        "OTROS CON UTILIZACION "
-        "DEL SISTEMA FINANCIERO"
-    )
-
-    if not ok:
-        raise Exception(
-            "No se encontró la forma "
-            "de pago requerida."
-        )
-
-
-    valor_pago = page.locator(
-        "#form\\:formaPagoComposite\\:"
-        "impValorPago"
-    )
-
-    valor_pago.fill(
-        f"{CLIENTE['total']:.2f}"
-    )
-
-    esperar(page, 1000)
-
-    guardar_si_aparece(page)
-
-    esperar(page, 3000)
-
-
-    # ========================================================
-    # 13. CAMPO ADICIONAL
-    # ========================================================
-
-    print("")
-    print("========================================")
-    print("13. CAMPO ADICIONAL")
-    print("========================================")
-
-    page.get_by_text(
-        "Añadir campo adicional",
-        exact=True
-    ).click()
-
-    esperar(page, 2000)
-
-
-    nombre_adicional = page.locator(
-        "#form\\:campoAdicionalComposite\\:"
-        "idNombreCampoAdcional"
-    )
-
-    nombre_adicional.fill(
-        "DETALLE"
-    )
-
-
-    # Buscar el segundo campo editable
-    # del componente Campo Adicional.
-
-    campos_adicionales = page.locator(
-        "[id^='form:campoAdicionalComposite:']"
-    )
-
-    campo_descripcion = None
 
     for i in range(
-        campos_adicionales.count()
+        inputs_producto.count()
     ):
 
-        elemento = (
-            campos_adicionales.nth(i)
-        )
+        inp = inputs_producto.nth(i)
 
         try:
-            tag = elemento.evaluate(
-                "e => e.tagName"
+            print(
+                i,
+                "| ID:",
+                inp.get_attribute("id"),
+                "| NAME:",
+                inp.get_attribute("name"),
+                "| VALUE:",
+                inp.get_attribute("value"),
+                "| TYPE:",
+                inp.get_attribute("type")
             )
-
-            id_elemento = (
-                elemento.get_attribute(
-                    "id"
-                ) or ""
-            )
-
-            if (
-                tag in ["INPUT", "TEXTAREA"]
-                and
-                "idNombreCampoAdcional"
-                not in id_elemento
-                and
-                elemento.is_visible()
-                and
-                elemento.is_editable()
-            ):
-                campo_descripcion = elemento
-                break
 
         except Exception:
             pass
 
-
-    if campo_descripcion is None:
-        raise Exception(
-            "No se encontró el campo "
-            "Descripción del campo adicional."
-        )
-
-
-    campo_descripcion.fill(
-        detalle_factura
-    )
-
-    guardar_si_aparece(page)
-
-    esperar(page, 3000)
-
-
-    # ========================================================
-    # 14. ÚLTIMA VALIDACIÓN ANTES DE FIRMAR
-    # ========================================================
-
     print("")
     print("========================================")
-    print("14. VALIDACIÓN FINAL")
+    print("PRUEBA TERMINADA HASTA PRODUCTO")
     print("========================================")
-
-    texto_final = page.locator(
-        "body"
-    ).inner_text()
-
-    if (
-        "ASESORIA CONTABILIDAD"
-        not in texto_final.upper()
-    ):
-        raise Exception(
-            "El producto desapareció antes "
-            "de firmar. Se cancela el envío."
-        )
-
-    if (
-        "DETALLE"
-        not in texto_final.upper()
-    ):
-        raise Exception(
-            "El campo adicional no quedó "
-            "guardado. Se cancela el envío."
-        )
-
-    total_final = valor_oculto(
-        page,
-        "#form\\:totalFacturaHidden"
-    )
-
-    if round(
-        total_final,
-        2
-    ) != CLIENTE["total"]:
-
-        raise Exception(
-            "El total cambió antes "
-            "de firmar."
-        )
-
-
-    print(
-        "TODO CORRECTO."
-    )
-
-    print(
-        "SE PROCEDERÁ A FIRMAR."
-    )
-
-
-    # ========================================================
-    # 15. FIRMAR Y ENVIAR
-    # ========================================================
-
-    print("")
-    print("========================================")
-    print("15. FIRMAR Y ENVIAR")
-    print("========================================")
-
-    boton_firmar = page.get_by_text(
-        "Firmar y enviar",
-        exact=True
-    )
-
-    boton_firmar.scroll_into_view_if_needed()
-
-    boton_firmar.click(
-        force=True
-    )
-
-    esperar(page, 4000)
-
-
-    # ========================================================
-    # 16. CLAVE DEL CERTIFICADO
-    # ========================================================
-
-    print("")
-    print("========================================")
-    print("16. FIRMA DIGITAL")
-    print("========================================")
-
-    clave_certificado = page.locator(
-        "#form\\:appletComposite\\:"
-        "txtClaveCertificado"
-    )
-
-    clave_certificado.wait_for(
-        state="visible",
-        timeout=20000
-    )
-
-    clave_certificado.fill(
-        CERT_PASS
-    )
-
-    print(
-        "Clave del certificado colocada."
-    )
-
-
-    # ========================================================
-    # 17. ENVIAR
-    # ========================================================
-
-    botones_enviar = page.get_by_role(
-        "button",
-        name="Enviar",
-        exact=True
-    )
-
-    boton_enviar = None
-
-    for i in range(
-        botones_enviar.count()
-    ):
-
-        try:
-            if botones_enviar.nth(
-                i
-            ).is_visible():
-
-                boton_enviar = (
-                    botones_enviar.nth(i)
-                )
-
-                break
-
-        except Exception:
-            pass
-
-
-    if boton_enviar is None:
-        raise Exception(
-            "No apareció el botón ENVIAR "
-            "de Firma digital."
-        )
-
-
-    boton_enviar.click()
-
-    print(
-        "Factura enviada al SRI."
-    )
-
-    esperar(page, 30000)
-
-
-    # ========================================================
-    # 18. RESULTADO DEL SRI
-    # ========================================================
-
-    print("")
-    print("========================================")
-    print("18. RESULTADO FINAL DEL SRI")
-    print("========================================")
-
-    resultado = page.locator(
-        "body"
-    ).inner_text()
-
-    print(resultado)
-
-
-    # Si sigue en la pantalla vacía de factura
-    # sin ningún mensaje de confirmación, no declaramos éxito.
-
-    palabras_error = [
-        "ERROR",
-        "NO AUTORIZADO",
-        "RECHAZADO",
-        "CLAVE INCORRECTA",
-        "ERROR AL FIRMAR"
-    ]
-
-    for palabra in palabras_error:
-
-        if palabra in resultado.upper():
-
-            raise Exception(
-                "El SRI devolvió un error: "
-                + palabra
-            )
-
-
-    print("")
-    print(
-        "PROCESO DE ENVÍO TERMINADO."
-    )
-
-    print(
-        "CLIENTE:",
-        CLIENTE["nombre"]
-    )
-
-    print(
-        "TOTAL:",
-        CLIENTE["total"]
-    )
-
-    print(
-        "MES:",
-        mes_facturado
-    )
 
     browser.close()
