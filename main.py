@@ -7,16 +7,24 @@ SRI_CLAVE = os.getenv("SRI_CLAVE")
 URL_LOGIN = "https://facturadorsri.sri.gob.ec/portal-facturadorsri-internet/pages/inicio.html"
 URL_FACTURA = "https://facturadorsri.sri.gob.ec/portal-facturadorsri-internet/pages/comprobantes/factura/Factura.html"
 
+if not SRI_RUC:
+    raise Exception("No existe el secret SRI_RUC")
+
+if not SRI_CLAVE:
+    raise Exception("No existe el secret SRI_CLAVE")
+
 with sync_playwright() as p:
+
     browser = p.chromium.launch(headless=True)
 
     page = browser.new_page(
         viewport={"width": 1920, "height": 1080}
     )
 
-    # =========================================================
-    # 1. INGRESAR AL FACTURADOR SRI
-    # =========================================================
+    # ==========================================================
+    # 1. INICIAR SESIÓN
+    # ==========================================================
+
     print("1. Ingresando al SRI...")
 
     page.goto(
@@ -26,15 +34,22 @@ with sync_playwright() as p:
     )
 
     page.locator('input[type="text"]').first.fill(SRI_RUC)
-    page.locator('input[type="password"]').fill(SRI_CLAVE)
+    page.locator('input[type="password"]').first.fill(SRI_CLAVE)
 
-    page.get_by_role("button", name="Ingresar").click()
+    page.get_by_role(
+        "button",
+        name="Ingresar"
+    ).click()
 
     page.wait_for_timeout(6000)
 
-    # =========================================================
-    # 2. IR DIRECTAMENTE A FACTURA
-    # =========================================================
+    print("LOGIN COMPLETADO")
+    print("URL:", page.url)
+
+    # ==========================================================
+    # 2. ABRIR FACTURA DIRECTAMENTE
+    # ==========================================================
+
     print("2. Abriendo pantalla de factura...")
 
     page.goto(
@@ -45,171 +60,153 @@ with sync_playwright() as p:
 
     page.wait_for_timeout(6000)
 
-    # =========================================================
-    # 3. TIPO DE IDENTIFICACIÓN = RUC
-    # =========================================================
-    print("3. Seleccionando RUC...")
+    print("PANTALLA DE FACTURA ABIERTA")
+    print("URL:", page.url)
 
-    tipo_identificacion = page.locator(
-        "#form\\:busquedaCompradorComp\\:cmbTipoIdentificacion_focus"
-    )
+    # ==========================================================
+    # 3. MOSTRAR TODOS LOS INPUTS
+    # ==========================================================
 
-    tipo_identificacion.click(force=True)
-
-    page.keyboard.press("ArrowDown")
-    page.keyboard.press("ArrowDown")
-    page.keyboard.press("Enter")
-
-    page.wait_for_timeout(1500)
-
-    # =========================================================
-    # 4. CLIENTE
-    # =========================================================
-    print("4. Colocando cliente...")
-
-    campo_ruc = page.locator(
-        "#form\\:busquedaCompradorComp\\:ruc"
-    )
-
-    campo_ruc.fill("1723041156001")
-
-    page.keyboard.press("Tab")
-
-    page.wait_for_timeout(5000)
-
-    print("Razón social encontrada:")
-
-    try:
-        razon_social = page.locator(
-            "#form\\:busquedaCompradorComp\\:compradorRazonSocial"
-        ).input_value()
-
-        print(razon_social)
-
-    except Exception as e:
-        print("No se pudo leer la razón social:", e)
-
-    # =========================================================
-    # 5. BUSCAR PRODUCTO
-    # =========================================================
-    print("5. Buscando ASESORIA CONTABILIDAD...")
-
-    producto = page.locator(
-        "#form\\:productoBusquedaComposite\\:autoCompleteProducto_input"
-    )
-
-    producto.click(force=True)
-
-    # Escribimos como una persona, no usamos fill()
-    producto.press_sequentially(
-        "A",
-        delay=300
-    )
-
-    page.wait_for_timeout(6000)
-
-    # =========================================================
-    # 6. ANALIZAR QUÉ MOSTRÓ EL AUTOCOMPLETE
-    # =========================================================
     print("")
-    print("========================================")
-    print("RESULTADOS DEL AUTOCOMPLETE")
-    print("========================================")
+    print("=" * 80)
+    print("INPUTS ENCONTRADOS")
+    print("=" * 80)
 
-    # Buscar paneles visibles relacionados al autocomplete
-    posibles_paneles = page.locator(
-        "[id*='autoCompleteProducto']:visible"
-    )
+    inputs = page.locator("input")
 
-    print(
-        "Elementos visibles relacionados con autoCompleteProducto:",
-        posibles_paneles.count()
-    )
+    print("TOTAL INPUTS:", inputs.count())
 
-    for i in range(posibles_paneles.count()):
-        elemento = posibles_paneles.nth(i)
+    for i in range(inputs.count()):
+
+        elemento = inputs.nth(i)
 
         try:
-            print("")
-            print("ELEMENTO", i)
-            print("TAG:", elemento.evaluate("el => el.tagName"))
-            print("ID:", elemento.get_attribute("id"))
-            print("CLASE:", elemento.get_attribute("class"))
-            print("TEXTO:")
-            print(elemento.inner_text())
+            print(
+                i,
+                "TYPE =", elemento.get_attribute("type"),
+                "| ID =", elemento.get_attribute("id"),
+                "| NAME =", elemento.get_attribute("name"),
+                "| VALUE =", elemento.get_attribute("value"),
+                "| PLACEHOLDER =", elemento.get_attribute("placeholder")
+            )
+        except:
+            pass
 
-        except Exception as e:
-            print("No se pudo leer elemento", i, e)
+    # ==========================================================
+    # 4. MOSTRAR TODOS LOS SELECT
+    # ==========================================================
 
-    # =========================================================
-    # 7. MOSTRAR TODOS LOS LI VISIBLES
-    # =========================================================
     print("")
-    print("========================================")
-    print("TODOS LOS <li> VISIBLES")
-    print("========================================")
+    print("=" * 80)
+    print("SELECT ENCONTRADOS")
+    print("=" * 80)
 
-    items = page.locator("li:visible")
+    selects = page.locator("select")
 
-    print("Cantidad de LI visibles:", items.count())
+    print("TOTAL SELECT:", selects.count())
 
-    for i in range(items.count()):
-        item = items.nth(i)
+    for i in range(selects.count()):
+
+        elemento = selects.nth(i)
 
         try:
-            texto = item.inner_text().strip()
+            print(
+                i,
+                "ID =", elemento.get_attribute("id"),
+                "| NAME =", elemento.get_attribute("name")
+            )
+        except:
+            pass
 
-            if texto:
-                print(
-                    i,
-                    "| ID:",
-                    item.get_attribute("id"),
-                    "| CLASE:",
-                    item.get_attribute("class"),
-                    "| TEXTO:",
-                    texto
-                )
+    # ==========================================================
+    # 5. MOSTRAR ELEMENTOS PRIMEFACES SELECTONEMENU
+    # ==========================================================
+
+    print("")
+    print("=" * 80)
+    print("SELECTORES PRIMEFACES")
+    print("=" * 80)
+
+    elementos = page.locator(
+        ".ui-selectonemenu, "
+        ".ui-selectonemenu-label, "
+        ".ui-selectonemenu-trigger"
+    )
+
+    print("TOTAL:", elementos.count())
+
+    for i in range(elementos.count()):
+
+        elemento = elementos.nth(i)
+
+        try:
+
+            print(
+                i,
+                "TAG =", elemento.evaluate("(e) => e.tagName"),
+                "| ID =", elemento.get_attribute("id"),
+                "| CLASS =", elemento.get_attribute("class"),
+                "| TEXTO =", elemento.inner_text(timeout=1000)
+            )
 
         except:
             pass
 
-    # =========================================================
-    # 8. BUSCAR TEXTO ASESORIA EN CUALQUIER PARTE
-    # =========================================================
-    print("")
-    print("========================================")
-    print("ELEMENTOS QUE CONTIENEN ASESORIA")
-    print("========================================")
+    # ==========================================================
+    # 6. BUSCAR TEXTO RELACIONADO CON IDENTIFICACIÓN
+    # ==========================================================
 
-    asesorias = page.get_by_text(
-        "ASESORIA",
-        exact=False
+    print("")
+    print("=" * 80)
+    print("ELEMENTOS RELACIONADOS CON IDENTIFICACIÓN")
+    print("=" * 80)
+
+    candidatos = page.locator(
+        "[id*='Identificacion'], "
+        "[id*='identificacion'], "
+        "[id*='TipoIdentificacion'], "
+        "[id*='tipoIdentificacion'], "
+        "[id*='ruc'], "
+        "[name*='Identificacion'], "
+        "[name*='identificacion'], "
+        "[name*='ruc']"
     )
 
-    print("Cantidad encontrada:", asesorias.count())
+    print("TOTAL CANDIDATOS:", candidatos.count())
 
-    for i in range(asesorias.count()):
-        elemento = asesorias.nth(i)
+    for i in range(candidatos.count()):
+
+        elemento = candidatos.nth(i)
 
         try:
-            print("")
-            print("ASESORIA ELEMENTO", i)
-            print("TAG:", elemento.evaluate("el => el.tagName"))
-            print("ID:", elemento.get_attribute("id"))
-            print("CLASE:", elemento.get_attribute("class"))
-            print("TEXTO:", elemento.inner_text())
+
+            print(
+                i,
+                "TAG =", elemento.evaluate("(e) => e.tagName"),
+                "| ID =", elemento.get_attribute("id"),
+                "| NAME =", elemento.get_attribute("name"),
+                "| TYPE =", elemento.get_attribute("type"),
+                "| CLASS =", elemento.get_attribute("class"),
+                "| VALUE =", elemento.get_attribute("value")
+            )
 
         except:
             pass
 
-    # =========================================================
-    # 9. MOSTRAR TEXTO GENERAL
-    # =========================================================
+    # ==========================================================
+    # 7. TEXTO DE LA PÁGINA
+    # ==========================================================
+
     print("")
-    print("========================================")
-    print("TEXTO GENERAL DE LA PÁGINA")
-    print("========================================")
+    print("=" * 80)
+    print("TEXTO VISIBLE DE LA PÁGINA")
+    print("=" * 80)
 
     print(page.locator("body").inner_text())
+
+    print("")
+    print("=" * 80)
+    print("DIAGNÓSTICO TERMINADO CORRECTAMENTE")
+    print("=" * 80)
 
     browser.close()
