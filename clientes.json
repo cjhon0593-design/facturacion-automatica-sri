@@ -1,0 +1,33 @@
+{
+  "gloria_pardo": {
+    "activo": true,
+    "ruc": "1723041156001",
+    "tipo_identificacion": "RUC",
+    "razon_social": "PARDO AGURTO GLORIA ALEXANDRA",
+    "direccion": "PICHINCHA / QUITO / KENNEDY / 6 DE DICIEMBRE N53-249 Y DE LOS PINOS",
+    "telefono": "0990653076",
+    "correo": "gloriapardoa2021@gmail.com",
+    "producto_codigo": "SV001",
+    "producto": "ASESORIA CONTABILIDAD",
+    "subtotal": 230.0,
+    "iva": 34.5,
+    "total": 264.5,
+    "forma_pago_valor": 264.5
+  },
+  "fcomex": {
+    "activo": true,
+    "ruc": "1793149405001",
+    "tipo_identificacion": "RUC",
+    "razon_social": "FACILITADORES DE COMERCIO EXTERIOR FCOMEX S.A.S.",
+    "direccion": "LEONARDO MURIALDO E9-97 Y DE LOS GUACAMAYOS",
+    "telefono": "0991901657",
+    "correo": "juan.campana@fcomex.com",
+    "producto_codigo": "SV001",
+    "producto": "ASESORIA CONTABILIDAD",
+    "subtotal": 200.0,
+    "iva": 30.0,
+    "total": 230.0,
+    "forma_pago_valor": 264.5,
+    "nota": "La ficha adjunta indica forma de pago 264.5 aunque el total es 230.0; revisar antes de automatizar el envío de este cliente."
+  }
+}
