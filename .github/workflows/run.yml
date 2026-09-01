@@ -2,9 +2,9 @@ name: Facturacion Automatica
 
 on:
   schedule:
-    # GitHub Actions usa UTC. 13:00 UTC = 08:00 Ecuador (UTC-5).
+    # GitHub Actions usa UTC. 15:00 UTC = 10:00 Ecuador (UTC-5).
     # Se ejecuta el día 1 de cada mes.
-    - cron: '0 13 1 * *'
+    - cron: '0 15 1 * *'
 
   workflow_dispatch:
     inputs:
