@@ -2,11 +2,10 @@ name: Facturacion Automatica
 
 on:
   schedule:
-    # PRUEBA REAL DEL 1 DE SEPTIEMBRE DE 2026:
-    # 15:38 UTC = 10:38 Ecuador y 15:47 UTC = 10:47 Ecuador.
-    # GitHub Actions schedule usa UTC.
-    - cron: '38 15 1 9 *'
-    - cron: '47 15 1 9 *'
+    # Ecuador UTC-5. Se programan varios intentos el día 1 de cada mes.
+    # Si uno se retrasa o no se dispara, los siguientes sirven de respaldo.
+    # El control anti-duplicado evita volver a emitir una factura ya registrada.
+    - cron: '7,22,37,52 15,16 1 * *'
 
   workflow_dispatch:
     inputs:
@@ -34,8 +33,6 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
 
-    # En ejecución automática procesa ambos clientes.
-    # En ejecución manual procesa únicamente el cliente seleccionado.
     strategy:
       max-parallel: 1
       fail-fast: false
