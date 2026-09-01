@@ -2,12 +2,11 @@ name: Facturacion Automatica
 
 on:
   schedule:
-    # Ecuador: ejecución principal a las 10:07 y respaldo a las 10:22.
-    # Evitamos el minuto 00 porque GitHub advierte que puede retrasar o descartar jobs por alta carga.
-    - cron: '7 10 1 * *'
-      timezone: 'America/Guayaquil'
-    - cron: '22 10 1 * *'
-      timezone: 'America/Guayaquil'
+    # PRUEBA REAL DEL 1 DE SEPTIEMBRE DE 2026:
+    # 15:38 UTC = 10:38 Ecuador y 15:47 UTC = 10:47 Ecuador.
+    # GitHub Actions schedule usa UTC.
+    - cron: '38 15 1 9 *'
+    - cron: '47 15 1 9 *'
 
   workflow_dispatch:
     inputs:
@@ -72,7 +71,6 @@ jobs:
           SRI_CLAVE: ${{ secrets.SRI_CLAVE }}
           CERT_PASS: ${{ secrets.CERT_PASS }}
           CLIENTE_ID: ${{ matrix.cliente_id }}
-          # Las ejecuciones automáticas son reales. Las manuales respetan la opción elegida.
           MODO_ENVIO: ${{ github.event_name == 'schedule' && 'PRODUCCION' || inputs.modo_envio }}
         run: python main.py
 
