@@ -26,5 +26,19 @@
     "informacion_adicional": "SERVICIOS MES DE AGOSTO 2026",
     "observacion": "Confirmación visible del SRI",
     "respuesta_sri": "0401995824001\nCERON TULCAN JHON MAICOL\n \n   Emisión - Factura\nConfiguración \nEmisión \nComprobantes \nAyuda \nFactura\nPendientes\nNueva factura\nNúmero de autorización:\n1508202601040199582400120011000000000629084163710\nNúmero de comprobante:\n001-100-000000062\nCorreo enviado a:\njuan.campana@fcomex.com\nVer RIDE\n\nFactura\n\nAdministración\n\nProductos y servicios\nwww.sri.gob.ec"
+  },
+  "gloria_pardo-2026-09": {
+    "estado": "AUTORIZADA",
+    "cliente_id": "gloria_pardo",
+    "ruc": "1723041156001",
+    "razon_social": "PARDO AGURTO GLORIA ALEXANDRA",
+    "periodo": "2026-09",
+    "fecha_ejecucion": "2026-09-01T10:56:36.744529-05:00",
+    "subtotal": 230.0,
+    "iva": 34.5,
+    "total": 264.5,
+    "informacion_adicional": "SERVICIOS MES DE SEPTIEMBRE 2026",
+    "observacion": "Confirmación visible del SRI",
+    "respuesta_sri": "0401995824001\nCERON TULCAN JHON MAICOL\n \n   Emisión - Factura\nConfiguración \nEmisión \nComprobantes \nAyuda \nFactura\nPendientes\nNueva factura\nNúmero de autorización:\n0109202601040199582400120011000000000638095917613\nNúmero de comprobante:\n001-100-000000063\nCorreo enviado a:\ngloriapardoa2021@gmail.com\nVer RIDE\n\nFactura\n\nAdministración\n\nProductos y servicios\nwww.sri.gob.ec"
   }
 }
