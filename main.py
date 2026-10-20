@@ -329,24 +329,31 @@ with sync_playwright() as p:
         print("VALORES CORRECTOS: SUBTOTAL + IVA = TOTAL")
         screenshot(page, "08_valores_correctos.png")
 
-        # 13. FORMA DE PAGO
+        # 13. FORMA DE PAGO - interfaz actual del SRI
         log("13. FORMA DE PAGO")
-        boton_pago = buscar_boton_visible(page, "Añadir forma de pago")
-        if boton_pago is None:
-            raise RuntimeError("No se encontró Añadir forma de pago")
-        boton_pago.click(force=True)
-        page.wait_for_timeout(2000)
-        seleccionar_option_por_texto(page, "#form\\:formaPagoComposite\\:selectFormaPago_input", CLIENTE["forma_pago"])
-        valor_pago = page.locator("#form\\:formaPagoComposite\\:impValorPago")
-        valor_pago.fill(f"{float(CLIENTE['forma_pago_valor']):.2f}")
-        valor_pago.press("Tab")
-        page.wait_for_timeout(1000)
-        guardar = buscar_boton_visible(page, "Guardar")
-        if guardar is not None:
-            guardar.click(force=True)
-            page.wait_for_timeout(3000)
-        print("Forma de pago configurada:", CLIENTE["forma_pago"])
-        print("Valor forma de pago:", CLIENTE["forma_pago_valor"])
+        forma_esperada = "OTROS CON UTILIZACIÓN DEL SISTEMA FINANCIERO"
+        if "OTROS CON UTILIZACION DEL SISTEMA FINANCIERO" not in CLIENTE["forma_pago"].upper().replace("Ó", "O"):
+            raise RuntimeError("Forma de pago configurada distinta a Otros con utilización del sistema financiero")
+
+        # La interfaz nueva presenta un botón directo, sin desplegable.
+        # Primero comprobamos que no esté ya agregada para evitar duplicarla.
+        texto_antes = page.locator("body").inner_text()
+        boton_pago = page.get_by_role("button", name=re.compile(r"Otros con utilizaci[oó]n del sistema financiero", re.I))
+        if boton_pago.count() == 0:
+            boton_pago = page.get_by_text(re.compile(r"Otros con utilizaci[oó]n del sistema financiero", re.I))
+        boton_pago.first.wait_for(state="visible", timeout=20000)
+        boton_pago.first.click()
+        page.wait_for_timeout(1800)
+
+        # Comprobación: debe aparecer una forma de pago registrada.
+        texto_despues = page.locator("body").inner_text()
+        if "No existen formas de pago" in texto_despues:
+            screenshot(page, "09_error_forma_pago.png")
+            raise RuntimeError("El SRI no registró la forma de pago tras pulsar el botón")
+
+        print("Forma de pago seleccionada mediante botón directo:", forma_esperada)
+        print("Valor esperado de la factura:", CLIENTE["forma_pago_valor"])
+        screenshot(page, "09_forma_pago_seleccionada.png")
 
         # 14. INFORMACIÓN ADICIONAL
         log("14. INFORMACIÓN ADICIONAL")
