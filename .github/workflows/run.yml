@@ -2,10 +2,10 @@ name: Facturacion Automatica
 
 on:
   schedule:
-    # Ecuador UTC-5. Se programan varios intentos el día 1 de cada mes.
-    # Si uno se retrasa o no se dispara, los siguientes sirven de respaldo.
-    # El control anti-duplicado evita volver a emitir una factura ya registrada.
-    - cron: '7,22,37,52 15,16 1 * *'
+    # Ecuador UTC-5: día 1 de cada mes, intentos 10:07, 10:37 y 11:07.
+    # GitHub puede retrasar un evento programado; nunca garantiza el minuto exacto.
+    - cron: '7,37 15 1 * *'
+    - cron: '7 16 1 * *'
 
   workflow_dispatch:
     inputs:
@@ -25,6 +25,10 @@ on:
         options:
           - PRUEBA
           - PRODUCCION
+
+concurrency:
+  group: facturacion-mensual-sri
+  cancel-in-progress: false
 
 permissions:
   contents: write
